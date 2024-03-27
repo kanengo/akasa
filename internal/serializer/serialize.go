@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/kanengo/akasa/internal/umath"
+	"github.com/kanengo/akasar/internal/umath"
 
-	"github.com/kanengo/akasa/internal/unsafex"
+	"github.com/kanengo/akasar/internal/unsafex"
 )
 
 type serializerError struct {

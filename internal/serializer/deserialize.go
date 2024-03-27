@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"math"
 
-	"github.com/kanengo/akasa/internal/unsafex"
+	"github.com/kanengo/akasar/internal/unsafex"
 )
 
 type Deserializer struct {

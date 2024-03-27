@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-func Se[T Serializable]() {
-
-}
-
 func TestSerializer(t *testing.T) {
 	var a int = 10
 	var b int8 = 8

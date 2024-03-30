@@ -8,6 +8,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+func Run[T any, P PointerToRoot[T]](ctx context.Context, app func(context.Context, *T) error) error {
+	return nil
+}
+
+type PointerToRoot[T any] interface {
+	*T
+	InstanceOf[Root]
+}
+
 type Ref[T any] struct {
 	val T
 }

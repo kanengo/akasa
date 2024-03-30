@@ -20,6 +20,10 @@ type Registration struct {
 	Impl  reflect.Type
 }
 
+func Register(reg Registration) error {
+	return globalRegistry.register(reg)
+}
+
 func (r *registry) register(reg Registration) error {
 	r.m.Lock()
 	defer r.m.Unlock()

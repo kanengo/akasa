@@ -15,10 +15,12 @@ const (
 
 // typeSet 持有代码生成所需的类型信息
 type typeSet struct {
-	pkg      *packages.Package
-	imported []importPkg
-	checked  typeutil.Map
-	sizes    typeutil.Map
+	pkg            *packages.Package
+	imported       []importPkg
+	importedByPath map[string]importPkg
+	importedByName map[string]importPkg
+	checked        typeutil.Map
+	sizes          typeutil.Map
 }
 
 // importPkg 已生成代码导入过的包
@@ -48,8 +50,10 @@ func (i importPkg) qualify(member string) string {
 
 func newTypeSet(pkg *packages.Package) *typeSet {
 	return &typeSet{
-		pkg:      pkg,
-		imported: []importPkg{},
+		pkg:            pkg,
+		imported:       []importPkg{},
+		importedByPath: make(map[string]importPkg),
+		importedByName: make(map[string]importPkg),
 	}
 }
 
@@ -210,4 +214,41 @@ func (tSet *typeSet) checkSerializable(t types.Type) []error {
 
 	check(t, t.String(), true)
 	return errors
+}
+
+func (tSet *typeSet) importPackage(path, pkg string) importPkg {
+	newImportPkg := func(path, pkg, alias string, local bool) importPkg {
+		i := importPkg{
+			path:  path,
+			pkg:   pkg,
+			alias: alias,
+			local: local,
+		}
+
+		tSet.imported = append(tSet.imported, i)
+		tSet.importedByPath[i.path] = i
+		tSet.importedByName[i.name()] = i
+
+		return i
+	}
+
+	if imp, ok := tSet.importedByPath[path]; ok {
+		return imp
+	}
+
+	if _, ok := tSet.importedByName[pkg]; !ok {
+		return newImportPkg(path, pkg, "", path == tSet.pkg.PkgPath)
+	}
+
+	var alias string
+	counter := 1
+	for {
+		alias = fmt.Sprintf("%s%d", pkg, counter)
+		if _, ok := tSet.importedByName[alias]; !ok {
+			break
+		}
+		counter += 1
+	}
+
+	return newImportPkg(path, pkg, alias, path == tSet.pkg.PkgPath)
 }

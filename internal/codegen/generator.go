@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -10,7 +11,9 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
+	"unicode"
 
 	"golang.org/x/exp/maps"
 
@@ -43,6 +46,25 @@ type component struct {
 
 func (c *component) fullIntfName() string {
 	return fullName(c.intf)
+}
+
+func (c *component) intfName() string {
+	return c.intf.Obj().Name()
+}
+
+func (c *component) methods() []*types.Func {
+	underlying := c.intf.Underlying().(*types.Interface)
+	methods := make([]*types.Func, underlying.NumMethods())
+
+	for i := 0; i < underlying.NumMethods(); i++ {
+		methods[i] = underlying.Method(i)
+	}
+
+	sort.Slice(methods, func(i, j int) bool {
+		return methods[i].Name() < methods[j].Name()
+	})
+
+	return methods
 }
 
 func fullName(t *types.Named) string {
@@ -407,8 +429,122 @@ func findComponents(pkg *packages.Package, f *ast.File, tSet *typeSet) ([]*compo
 	return components, errors.Join(errs...)
 }
 
+type printFn func(format string, args ...any)
+
 func (g *generator) generate() error {
+	if len(g.components) == 0 {
+		return nil
+	}
+
+	sort.Slice(g.components, func(i, j int) bool {
+		return g.components[i].intfName() < g.components[j].intfName()
+	})
+
+	var body bytes.Buffer
+	{
+		p := func(format string, args ...any) {
+			_, _ = fmt.Fprintln(&body, fmt.Sprintf(format, args...))
+		}
+		g.generateRegisteredComponents(p)
+	}
+
 	return nil
+}
+
+// codegen imports and returns the codegen package.
+func (g *generator) codegen() importPkg {
+	p := fmt.Sprintf("%s/runtime/codegen", akasarPackagePath)
+
+	return g.tSet.importPackage(p, "codegen")
+}
+
+func (g *generator) trace() importPkg {
+	return g.tSet.importPackage("go.opentelemetry.io/otel/trace", "trace")
+}
+
+func (g *generator) akasa() importPkg {
+	return g.tSet.importPackage(akasarPackagePath, "akasar")
+}
+
+func (g *generator) componentRef(com *component) string {
+	if com.isRoot {
+		return g.akasa().qualify("Root")
+	}
+
+	return com.intfName()
+}
+
+func (g *generator) generateRegisteredComponents(p printFn) {
+	if len(g.components) == 0 {
+		return
+	}
+
+	g.tSet.importPackage("context", "context")
+	p(``)
+	p(`fnc init() {`)
+
+	for _, comp := range g.components {
+		name := comp.intfName()
+		var b strings.Builder
+
+		// 单个方法的方法metric
+		emitMetricInitializer := func(m *types.Func, remote bool) {
+			_, _ = fmt.Fprintf(&b, ", %sMetrics: %s(%s{Caller: caller, Component: %q, Method: %q, Remote: %v})",
+				m.Name(),
+				g.codegen().qualify("MethodMetricsFor"),
+				g.codegen().qualify("MethodLabels"),
+				comp.fullIntfName(),
+				m.Name(),
+				remote,
+			)
+		}
+
+		// local stub
+		b.Reset()
+		for _, m := range comp.methods() {
+			emitMetricInitializer(m, false)
+		}
+		localStubFn := fmt.Sprintf(`
+func(impl any, caller string, tracer %v) any {
+ return %s_local_stub{impl: impl.(%s), tracer: tracer%s}
+}`,
+			g.trace().qualify("Tracer"),
+			notExported(name),
+			g.componentRef(comp),
+			b.String(),
+		)
+
+		//client stub
+		b.Reset()
+		for _, m := range comp.methods() {
+			emitMetricInitializer(m, true)
+		}
+		clientFn := fmt.Sprintf(`
+func(stub %s, caller string, tracer %v) any {
+ return %s_client_stub{stub: stub%s}
+}`,
+			g.codegen().qualify("Stub"),
+			g.trace().qualify("Tracer"),
+			notExported(name),
+			b.String(),
+		)
+
+		// server stub
+		serverStubFn := fmt.Sprintf(`
+func(impl any) {
+  return %s_server_stub{impl: impl.(%s)}"
+}`,
+			notExported(name),
+			g.componentRef(comp),
+		)
+
+		fmt.Println(localStubFn)
+		fmt.Println(clientFn)
+		fmt.Println(serverStubFn)
+	}
+
+	p(`}`)
+
 }
 
 func Generate(dir string, pkgs []string) error {
@@ -440,8 +576,34 @@ func Generate(dir string, pkgs []string) error {
 			errs = append(errs, err)
 			continue
 		}
-		_ = g
+		if err := g.generate(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
-	return err
+	return errors.Join(errs...)
+}
+
+func notExported(name string) string {
+	if len(name) == 0 {
+		return name
+	}
+
+	a := []rune(name)
+
+	a[0] = unicode.ToLower(a[0])
+
+	return string(a)
+}
+
+func exported(name string) string {
+	if len(name) == 0 {
+		return name
+	}
+
+	a := []rune(name)
+
+	a[0] = unicode.ToUpper(a[0])
+
+	return string(a)
 }

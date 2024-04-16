@@ -9,7 +9,7 @@ type Stub interface {
 	//Tracer() trace.Tracer
 
 	// Invoke 执行rpc调用。
-	//代码生成时, 接口方法已经排序， method 就是方法切片的索引 shardKey 是路由组件的 shard key
+	//代码生成时, 接口方法已经排序， method 就是方法切片的索引, shardKey 是路由组件的 shard key
 	Invoke(ctx context.Context, method int, args []byte, shardKey uint64) (result []byte, err error)
 }
 

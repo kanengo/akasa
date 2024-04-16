@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 var globalRegistry registry
@@ -15,13 +17,22 @@ type registry struct {
 }
 
 type Registration struct {
-	Name  string
-	Iface reflect.Type
-	Impl  reflect.Type
+	Name      string // full package-prefixed component name
+	Iface     reflect.Type
+	Impl      reflect.Type
+	Routed    bool // True if calls to this component should be routed
+	Listeners []string
+	NoRetry   []int //indices of methods that should not be retried.
+
+	LocalStubFn  func(impl any, caller string, tracer trace.Tracer) any
+	ClientStubFn func(stub Stub, caller string, tracer trace.Tracer) any
+	ServerStubFn func(impl any) Server
 }
 
-func Register(reg Registration) error {
-	return globalRegistry.register(reg)
+func Register(reg Registration) {
+	if err := globalRegistry.register(reg); err != nil {
+		panic(err)
+	}
 }
 
 func (r *registry) register(reg Registration) error {

@@ -1,4 +1,4 @@
-package serializer
+package codegen
 
 import (
 	"encoding/binary"
@@ -16,7 +16,7 @@ type serializerError struct {
 
 func (e serializerError) Error() string {
 	if e.err == nil {
-		return ""
+		return "serializer:"
 	}
 
 	return "serializer:" + e.err.Error()
@@ -163,4 +163,49 @@ func (s *Serializer) Complex128(val complex128) {
 
 func (s *Serializer) Data() []byte {
 	return s.buf
+}
+
+const (
+	endOfErrors        uint8 = 0
+	serializedErrorVal uint8 = 1
+	serializedErrorPtr uint8 = 2
+	emulatedError      uint8 = 3
+)
+
+func (s *Serializer) Error(err error) {
+	seen := map[error]struct{}{}
+
+	var dfs func(err error)
+	dfs = func(e error) {
+		if err == nil {
+			return
+		}
+		if _, ok := seen[e]; ok {
+			return
+		}
+		seen[e] = struct{}{}
+
+		if am, ok := err.(AutoMarshal); ok {
+			s.Uint8(serializedErrorVal)
+			s.Any(am)
+			return
+		}
+
+		if am, ok := pointerTo(err).(AutoMarshal); ok {
+			s.Uint8(serializedErrorPtr)
+			s.Any(am)
+			return
+		}
+
+		s.Uint8(emulatedError)
+		s.String(err.Error())
+
+	}
+	dfs(err)
+	s.Uint8(endOfErrors)
+}
+
+func (s *Serializer) Any(value AutoMarshal) {
+	s.String(typKey(value))
+	value.AkasarMarshal(s)
 }

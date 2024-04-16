@@ -1,4 +1,4 @@
-package serializer
+package codegen
 
 import (
 	"fmt"

@@ -20,7 +20,12 @@ type typeSet struct {
 	importedByPath map[string]importPkg
 	importedByName map[string]importPkg
 	checked        typeutil.Map
-	sizes          typeutil.Map
+
+	// If sizes[t] != nil, then sizes[t] == sizeOfType(t)
+	sizes typeutil.Map
+
+	// If measurable[t] != nil, then measurable[t] == isMeasurableType(t)
+	measurable typeutil.Map
 }
 
 // importPkg 已生成代码导入过的包
@@ -88,6 +93,10 @@ func isInvalid(t types.Type) bool {
 
 func isAkasarRouter(t types.Type) bool {
 	return isAkasarType(t, "Router", 1)
+}
+
+func isAkasarNotRetriable(t types.Type) bool {
+	return isAkasarType(t, "NotRetriable", 0)
 }
 
 func isContext(t types.Type) bool {
@@ -251,4 +260,123 @@ func (tSet *typeSet) importPackage(path, pkg string) importPkg {
 	}
 
 	return newImportPkg(path, pkg, alias, path == tSet.pkg.PkgPath)
+}
+
+func (tSet *typeSet) genTypeString(t types.Type) string {
+	var qualifier = func(pkg *types.Package) string {
+		if pkg == tSet.pkg.Types {
+			return ""
+		}
+		return tSet.importPackage(pkg.Path(), pkg.Name()).name()
+	}
+
+	return types.TypeString(t, qualifier)
+}
+
+func (tSet *typeSet) isFixedSizeType(t types.Type) bool {
+	return tSet.sizeOfType(t) >= 0
+}
+
+func (tSet *typeSet) sizeOfType(t types.Type) int {
+	if size := tSet.sizes.At(t); size != nil {
+		return size.(int)
+	}
+
+	switch x := t.(type) {
+	case *types.Basic:
+		switch x.Kind() {
+		case types.Bool, types.Int8, types.Uint8:
+			return 1
+		case types.Int16, types.Uint16:
+			return 2
+		case types.Int32, types.Uint32, types.Float32:
+			return 4
+		case types.Int, types.Int64, types.Uint, types.Uint64, types.Float64, types.Complex64:
+			return 8
+		case types.Complex128:
+			return 16
+		default:
+			return -1
+		}
+	case *types.Array:
+		n := tSet.sizeOfType(x.Elem())
+		if n < 0 || x.Len() < 0 {
+			tSet.sizes.Set(t, -1)
+			return -1
+		}
+		size := int(x.Len()) * n
+		tSet.sizes.Set(t, size)
+		return size
+	case *types.Struct:
+		size := 0
+		for i := 0; i < x.NumFields(); i++ {
+			n := tSet.sizeOfType(x.Field(i).Type())
+			if n < 0 {
+				tSet.sizes.Set(t, -1)
+				return -1
+			}
+		}
+		tSet.sizes.Set(t, size)
+		return size
+	case *types.Named:
+		size := tSet.sizeOfType(x.Underlying())
+		tSet.sizes.Set(t, size)
+		return size
+
+	default:
+		return -1
+	}
+
+}
+
+func (tSet *typeSet) isMeasurable(t types.Type) bool {
+	rootPkg := tSet.pkg.Types
+
+	if result := tSet.measurable.At(t); result != nil {
+		return result.(bool)
+	}
+
+	switch x := t.(type) {
+	case *types.Basic:
+		switch x.Kind() {
+		case types.Bool,
+			types.Int, types.Int8, types.Int16, types.Int32, types.Int64,
+			types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64,
+			types.Float32, types.Float64,
+			types.Complex64, types.Complex128,
+			types.String:
+			return true
+		default:
+			return false
+		}
+	case *types.Pointer:
+		tSet.measurable.Set(t, tSet.isMeasurable(x.Elem()))
+	case *types.Slice:
+		tSet.measurable.Set(t, tSet.isFixedSizeType(x.Elem()))
+	case *types.Array:
+		tSet.measurable.Set(t, tSet.isFixedSizeType(x.Elem()))
+	case *types.Map:
+		tSet.measurable.Set(t, tSet.isFixedSizeType(x.Key()) && tSet.isFixedSizeType(x.Elem()))
+	case *types.Struct:
+		measurable := true
+		for i := 0; i < x.NumFields(); i++ {
+			f := x.Field(i)
+			if f.Pkg() != rootPkg {
+				measurable = false
+				break
+			}
+			measurable = measurable && tSet.isMeasurable(f.Type())
+		}
+		tSet.measurable.Set(t, measurable)
+	case *types.Named:
+		if x.Obj().Pkg() != rootPkg {
+			tSet.measurable.Set(t, false)
+		} else {
+			tSet.measurable.Set(t, tSet.isMeasurable(x.Underlying()))
+		}
+	default:
+		return false
+	}
+
+	return tSet.measurable.At(t).(bool)
 }

@@ -1,11 +1,30 @@
-package serializer
+package codegen
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"math"
+	"reflect"
 
 	"github.com/kanengo/akasar/internal/unsafex"
 )
+
+type deserializerError struct {
+	err error
+}
+
+func (e deserializerError) Error() string {
+	if e.err == nil {
+		return "deserializer:"
+	}
+
+	return "deserializer:" + e.err.Error()
+}
+
+func makeDeserializerError(format string, args ...interface{}) serializerError {
+	return serializerError{err: fmt.Errorf(format, args...)}
+}
 
 type Deserializer struct {
 	buf   []byte
@@ -18,8 +37,74 @@ func NewDeserializer(buf []byte) *Deserializer {
 
 func (d *Deserializer) check(n int) {
 	if len(d.buf[d.index:]) < n {
-		panic(makeSerializerError("deserializer: not enough space to deserialize"))
+		panic(makeDeserializerError("deserializer: not enough space to deserialize"))
 	}
+}
+
+func (d *Deserializer) Error() error {
+	var list []error
+	for {
+		tag := d.Uint8()
+		if tag == endOfErrors {
+			break
+		} else if tag == serializedErrorVal {
+			val := d.Any()
+			if e, ok := val.(error); ok {
+				list = append(list, e)
+				continue
+			}
+			panic(fmt.Sprintf("received type %T which is not an error", val))
+		} else if tag == serializedErrorPtr {
+			val := d.Any()
+			if e, ok := pointee(val).(error); ok {
+				list = append(list, e)
+				continue
+			}
+			panic(fmt.Sprintf("received type %T which is not a pointer to error", val))
+		} else if tag == emulatedError {
+			msg := d.String()
+			list = append(list, errors.New(msg))
+		}
+	}
+
+	if len(list) == 1 {
+		return list[0]
+	}
+
+	return errors.Join(list...)
+}
+
+func (d *Deserializer) Any() any {
+	key := d.String()
+
+	typesMu.Lock()
+	defer typesMu.Unlock()
+
+	t, ok := types[key]
+	if !ok {
+		panic(fmt.Sprintf("received value for non-registered type %q", key))
+	}
+
+	var ptr reflect.Value
+	if t.Kind() == reflect.Pointer {
+		ptr = reflect.New(t.Elem())
+	} else {
+		ptr = reflect.New(t)
+	}
+
+	am, ok := ptr.Interface().(AutoMarshal)
+	if !ok {
+		panic(fmt.Sprintf("received value for non-serializable type %v", t))
+	}
+	am.AkasarUnmarshal(d)
+
+	result := ptr
+	if t.Kind() != reflect.Pointer {
+		result = ptr.Elem()
+	}
+
+	return result.Interface()
+
 }
 
 func (d *Deserializer) Uint64() (val uint64) {

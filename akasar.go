@@ -2,8 +2,11 @@ package akasar
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 
 	"go.opentelemetry.io/otel/trace"
 )
@@ -36,11 +39,13 @@ type Result[T any] struct {
 	err error
 }
 
-type ResultUnwrapError error
+type ResultUnwrapError struct {
+	Err error
+}
 
 func (r *Result[T]) Unwrap() T {
 	if r.err != nil {
-		panic(ResultUnwrapError(r.err))
+		panic(ResultUnwrapError{r.err})
 	}
 	return r.val
 }
@@ -82,7 +87,7 @@ func (c Components[T]) setLogger(logger *slog.Logger) {
 // components 实现InstanceOf接口
 func (Components[T]) components(T) {}
 
-type Root struct {
+type Root interface {
 }
 
 type Initializer interface {
@@ -95,6 +100,15 @@ type Listener struct {
 }
 
 type WithRouter[T any] struct {
+}
+
+type NotRetriable interface {
+}
+
+var RemoteCallError = errors.New("service akasar remote call error")
+
+var HealthHandler = func(w http.ResponseWriter, _ *http.Request) {
+	_, _ = fmt.Fprintf(w, "OK")
 }
 
 //=======================================

@@ -237,3 +237,12 @@ func (d *Deserializer) Bytes() (val []byte) {
 
 	return
 }
+
+func (d *Deserializer) Len() int {
+	n := int(d.Int32())
+	if n < -1 {
+		panic(makeDeserializerError("length can't be smaller than -1"))
+	}
+
+	return n
+}

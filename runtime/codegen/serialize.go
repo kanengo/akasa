@@ -209,3 +209,14 @@ func (s *Serializer) Any(value AutoMarshal) {
 	s.String(typKey(value))
 	value.AkasarMarshal(s)
 }
+
+func (s *Serializer) Len(l int) {
+	if l < -1 {
+		panic(makeSerializerError("unable to encode a negative length %d", l))
+	}
+	if l > math.MaxUint32 {
+		panic(makeSerializerError("length can't be represented in 4 bytes"))
+	}
+
+	s.Int32(int32(l))
+}

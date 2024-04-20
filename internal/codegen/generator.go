@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -17,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/kanengo/akasar/internal/files"
 
 	"golang.org/x/tools/go/types/typeutil"
 
@@ -29,6 +32,23 @@ import (
 
 const (
 	generatedCodeFile = "akasar_gen.go"
+
+	Usage = `Generate code for a Service Akasar application.
+Usage:
+  akasar generate [packages]
+
+Description:
+  generate code for a Service Akasar application in the provided packages.
+
+Examples:
+  # Generate code for the package int the current directory.
+  akasar generate
+
+  # Generate code for the package in the ./foo directory.
+  akasar generate ./foo
+
+  # Generate code for all packages in all sub directories of current directory.
+  akasar generate ./...`
 )
 
 type generator struct {
@@ -37,6 +57,9 @@ type generator struct {
 	fileSet    *token.FileSet
 	pkg        *packages.Package
 	components []*component
+
+	autoMarshals          *typeutil.Map //types that implement AutoMarshal
+	autoMarshalCandidates *typeutil.Map //types that declare themselves AutoMarshal
 
 	sizeFuncNeeded typeutil.Map
 	generated      typeutil.Map
@@ -84,7 +107,7 @@ func fullName(t *types.Named) string {
 	return path.Join(t.Obj().Pkg().Path(), t.Obj().Name())
 }
 
-func newGenerator(pkg *packages.Package, fSet *token.FileSet) (*generator, error) {
+func newGenerator(pkg *packages.Package, fSet *token.FileSet, autoMarshals *typeutil.Map) (*generator, error) {
 	//Abort if there were any errors loading the package.
 	var errs []error
 	for _, err := range pkg.Errors {
@@ -95,8 +118,40 @@ func newGenerator(pkg *packages.Package, fSet *token.FileSet) (*generator, error
 		return nil, err
 	}
 
-	tSet := newTypeSet(pkg)
-	//遍历语法树 寻找和处理components
+	tSet := newTypeSet(pkg, autoMarshals, &typeutil.Map{})
+	for _, file := range pkg.Syntax {
+		filename := fSet.Position(file.Package).Filename
+		if filepath.Base(filename) == generatedCodeFile {
+			continue
+		}
+
+		ts, err := findAutoMarshals(pkg, file)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		for _, t := range ts {
+			tSet.autoMarshalCandidates.Set(t, struct{}{})
+		}
+	}
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+
+	// 一个嵌入了 akasar.AutoMarshal 的类型并不意味着可以自动marshal它
+	for _, t := range tSet.autoMarshalCandidates.Keys() {
+		n := t.(*types.Named)
+		if err := errors.Join(tSet.checkSerializable(n)...); err != nil {
+			errs = append(errs, errorf(fSet, n.Obj().Pos(), "type %v is not serializable\n%w", t, err))
+			continue
+		}
+		tSet.autoMarshals.Set(t, struct{}{})
+	}
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+
 	components := make(map[string]*component)
 	for _, file := range pkg.Syntax {
 		filename := fSet.Position(file.Package).Filename
@@ -145,6 +200,70 @@ func newGenerator(pkg *packages.Package, fSet *token.FileSet) (*generator, error
 		fileSet:    fSet,
 		components: maps.Values(components),
 	}, nil
+}
+
+func findAutoMarshals(pkg *packages.Package, file *ast.File) ([]*types.Named, error) {
+	var autoMarshals []*types.Named
+	var errs []error
+
+	for _, decl := range file.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.TYPE {
+			//This is not a type declaration.
+			continue
+		}
+
+		for _, spec := range genDecl.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				panic(errorf(pkg.Fset, spec.Pos(), "type declaration has non-TypeSpec spec: %v", spec))
+			}
+
+			// Extract the type's name
+			def, ok := pkg.TypesInfo.Defs[typeSpec.Name]
+			if !ok {
+				panic(errorf(pkg.Fset, spec.Pos(), "name %v not found", typeSpec.Name))
+			}
+			n, ok := def.Type().(*types.Named)
+			if !ok {
+				// For type aliases like `type Int = int`, Int has type int and
+				// not type Named. We ignore these.
+				continue
+			}
+
+			// Check if the type of the expression is struct.
+			t, ok := pkg.TypesInfo.Types[typeSpec.Type].Type.(*types.Struct)
+			if !ok {
+				continue
+			}
+
+			autoMarshal := false
+			for i := 0; i < t.NumFields(); i++ {
+				field := t.Field(i)
+				if field.Embedded() && isAkasarAutoMarshal(field.Type()) {
+					autoMarshal = true
+					break
+				}
+			}
+			if !autoMarshal {
+				continue
+			}
+
+			if n.TypeParams() != nil {
+				errs = append(errs, errorf(pkg.Fset, spec.Pos(),
+					"generic struct %v cannot embed akasar.AutoMarhsal",
+					formatType(pkg, n),
+				))
+				continue
+			}
+
+			autoMarshals = append(autoMarshals, n)
+
+		}
+
+	}
+
+	return autoMarshals, errors.Join(errs...)
 }
 
 func parseNowAkasarGenFile(fSet *token.FileSet, filename string, src []byte) (*ast.File, error) {
@@ -342,8 +461,8 @@ func validateMethods(pkg *packages.Package, tSet *typeSet, intf *types.Named) er
 	return errors.Join(errs...)
 }
 
-// extraComponent 尝试从提供的TypeSpec提取出component
-func extraComponent(pkg *packages.Package, file *ast.File, tSet *typeSet, spec *ast.TypeSpec) (*component, error) {
+// extractComponent 尝试从提供的TypeSpec提取出component
+func extractComponent(pkg *packages.Package, file *ast.File, tSet *typeSet, spec *ast.TypeSpec) (*component, error) {
 	// 检查TypeSpe是否是一个结构体类型.
 	s, ok := spec.Type.(*ast.StructType)
 	if !ok {
@@ -486,6 +605,10 @@ func extraComponent(pkg *packages.Package, file *ast.File, tSet *typeSet, spec *
 		}
 	}
 
+	if err := checkMisTypeInit(pkg, tSet, impl); err != nil {
+		fmt.Println(err)
+	}
+
 	comp := &component{
 		intf:      intf,
 		impl:      impl,
@@ -497,6 +620,33 @@ func extraComponent(pkg *packages.Package, file *ast.File, tSet *typeSet, spec *
 
 	return comp, nil
 
+}
+
+func checkMisTypeInit(pkg *packages.Package, set *typeSet, impl *types.Named) error {
+	for i := 0; i < impl.NumMethods(); i++ {
+		m := impl.Method(i)
+		if m.Name() != "Init" {
+			continue
+		}
+
+		sig := m.Type().(*types.Signature)
+		err := errorf(pkg.Fset, m.Pos(),
+			`WARNING: Component %v's Init method has type "%v", not type func(context.Context) error.`,
+			impl.Obj().Name(),
+			sig,
+		)
+
+		if sig.Params().Len() != 1 || !isContext(sig.Params().At(0).Type()) {
+			return err
+		}
+
+		if sig.Results().Len() != -1 || sig.Results().At(0).Type().String() != "error" {
+			return err
+		}
+		return nil
+	}
+
+	return nil
 }
 
 func findComponents(pkg *packages.Package, f *ast.File, tSet *typeSet) ([]*component, error) {
@@ -512,7 +662,7 @@ func findComponents(pkg *packages.Package, f *ast.File, tSet *typeSet) ([]*compo
 			if !ok {
 				continue
 			}
-			comp, err := extraComponent(pkg, f, tSet, ts)
+			comp, err := extractComponent(pkg, f, tSet, ts)
 			if err != nil {
 				errs = append(errs, err)
 				continue
@@ -547,10 +697,57 @@ func (g *generator) generate() error {
 		g.generateLocalStubs(p)
 		g.generateClientStubs(p)
 		g.generateSeverStubs(p)
-		fmt.Println(body.String())
+		g.generateAutoMarshalMethods(p)
+		g.generateEncDecMethods(p)
+
+		if g.sizeFuncNeeded.Len() > 0 {
+			p(`// Size implementations.`)
+			p(``)
+
+			keys := g.sizeFuncNeeded.Keys()
+			sort.Slice(keys, func(i, j int) bool {
+				x, y := keys[i], keys[j]
+				return x.String() < y.String()
+			})
+			for _, t := range keys {
+				g.generateSizeFunction(p, t)
+			}
+		}
 	}
 
-	return nil
+	var header bytes.Buffer
+	{
+		fn := func(format string, args ...any) {
+			_, _ = fmt.Fprintln(&header, fmt.Sprintf(format, args...))
+		}
+		g.generateImports(fn)
+	}
+
+	filename := filepath.Join(g.pkgDir(), generatedCodeFile)
+	dst := files.NewWriter(filename)
+	defer dst.Cleanup()
+
+	fmtAndWrite := func(buf bytes.Buffer) error {
+		b := buf.Bytes()
+		var err error
+		//formatted, err := format.Source(b)
+		//if err != nil {
+		//	return fmt.Errorf("format.Source: %w", err)
+		//}
+		//b = formatted
+
+		_, err = io.Copy(dst, bytes.NewReader(b))
+		return err
+	}
+
+	if err := fmtAndWrite(header); err != nil {
+		return err
+	}
+	if err := fmtAndWrite(body); err != nil {
+		return err
+	}
+
+	return dst.Close()
 }
 
 // codegen imports and returns the codegen package.
@@ -649,6 +846,9 @@ func (g *generator) encode(stub, e string, t types.Type) string {
 		return fmt.Sprintf("%s(%s, %s)", f(x), stub, ref(e))
 	case *types.Named:
 		under := x.Underlying()
+		if g.tSet.autoMarshals.At(x) != nil || g.tSet.implementsAutoMarshal(x) {
+			return fmt.Sprintf("(%s).AkasarMarshal(%s)", e, stub)
+		}
 		if _, ok := under.(*types.Struct); ok {
 			return fmt.Sprintf("%s(%s, %s)", f(x), stub, ref(e))
 		}
@@ -703,7 +903,9 @@ func (g *generator) decode(stub, v string, t types.Type) string {
 	case *types.Struct:
 		return fmt.Sprintf("%s(%s,%s)", f(x), stub, v)
 	case *types.Named:
-
+		if g.tSet.autoMarshals.At(x) != nil || g.tSet.implementsAutoMarshal(x) {
+			return fmt.Sprintf("(%s).AkasarUnmarshal(%s)", v, stub)
+		}
 		under := x.Underlying()
 		if _, ok := under.(*types.Struct); ok {
 			return fmt.Sprintf("%s(%s,%s)", f(x), stub, v)
@@ -730,7 +932,7 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 		// 单个方法的方法metric
 		emitMetricInitializer := func(m *types.Func, remote bool) {
 			_, _ = fmt.Fprintf(&b, ", %sMetrics: %s(%s{Caller: caller, Component: %q, Method: %q, Remote: %v})",
-				m.Name(),
+				notExported(m.Name()),
 				g.codegen().qualify("MethodMetricsFor"),
 				g.codegen().qualify("MethodLabels"),
 				comp.fullIntfName(),
@@ -781,7 +983,7 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 		//     return foo_server_stub{impl: impl.(Foo)}
 		// }
 		serverStubFn := fmt.Sprintf(`func(impl any) %s {
-  			return %sServerStub{impl: impl.(%s)}"
+  			return %sServerStub{impl: impl.(%s)}
 		}`,
 			g.codegen().qualify("Server"),
 			notExported(name),
@@ -799,14 +1001,14 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 			g.codegen().qualify("Register"),
 			g.codegen().qualify("Registration"),
 		)
-		p(`		Name: %q,`, name)
+		p(`		Name: %q,`, comp.fullIntfName())
 		p(`		Iface: %s((%s)(nil)).Elem(),`,
 			reflectImport.qualify("TypeOf"),
 			g.componentRef(comp),
 		)
-		p(`		Impl: %s(%s{}),"`,
+		p(`		Impl: %s(%s{}),`,
 			reflectImport.qualify("TypeOf"),
-			comp.impl,
+			comp.implName(),
 		)
 		if comp.router != nil {
 			p(`		Routed: true,`)
@@ -816,10 +1018,10 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 			for i, lis := range comp.listeners {
 				listeners[i] = fmt.Sprintf("%q", lis)
 			}
-			p(`		Listeners: []string{%s}`, strings.Join(listeners, ","))
+			p(`		Listeners: []string{%s},`, strings.Join(listeners, ","))
 		}
 		if len(comp.noRetry) > 0 {
-			p(`		NoRetry: []int{%s}`, noRetryString(comp))
+			p(`		NoRetry: []int{%s},`, noRetryString(comp))
 		}
 		p(`		LocalStubFn: %s,`, localStubFn)
 		p(`		ClientStubFn: %s,`, clientStubFn)
@@ -869,8 +1071,9 @@ func Generate(dir string, pkgs []string) error {
 
 	var errs []error
 
+	var autoMarshals typeutil.Map
 	for _, pkg := range pkgList {
-		g, err := newGenerator(pkg, fSet)
+		g, err := newGenerator(pkg, fSet, &autoMarshals)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -1080,14 +1283,14 @@ func (g *generator) generateLocalStubs(p printFn) {
 			p(`func (s %s) %s(%s) (%s) {`, stub, m.Name(), g.args(signature), g.returns(signature))
 
 			p(`	// Update metrics.`)
-			p(`	begin := s.%sMetric.begin()`, notExported(m.Name()))
-			p(`	defer func() { s.%sMetric.End(begin, err != nil, 0, 0) }()`, notExported(m.Name()))
+			p(`	begin := s.%sMetrics.Begin()`, notExported(m.Name()))
+			p(`	defer func() { s.%sMetrics.End(begin, err != nil, 0, 0) }()`, notExported(m.Name()))
 
 			// Create a child span if tracing is enabled is ctx.
 			p(`	span := %s(ctx)`, g.trace().qualify("SpanFromContext"))
 			p(`	if span.SpanContext().IsValid() {`)
 			p(`		// Create a child span for this method.`)
-			p(`		ctx, span = s.tracer.Start(ctx, "%s.%s.%s", trace.WithSpanKind((trace.SpanKindInternal))`,
+			p(`		ctx, span = s.tracer.Start(ctx, "%s.%s.%s", trace.WithSpanKind((trace.SpanKindInternal)))`,
 				g.pkg.Name, com.intfName(), m.Name())
 			p(`		defer func() {`)
 			p(`			if err != nil {`)
@@ -1130,7 +1333,7 @@ func (g *generator) generateClientStubs(p printFn) {
 		p(`	stub %s`, g.codegen().qualify("Stub"))
 		p(`	tracer %s`, g.trace().qualify("Tracer"))
 		for _, m := range com.methods() {
-			p(`	%sMetrics *%s`, notExported(m.Name()), g.trace().qualify("MethodMetrics"))
+			p(`	%sMetrics *%s`, notExported(m.Name()), g.codegen().qualify("MethodMetrics"))
 		}
 		p(`}`)
 
@@ -1157,14 +1360,14 @@ func (g *generator) generateClientStubs(p printFn) {
 
 			p(`	// Update metrics.`)
 			p(`	var requestBytes, replyBytes int`)
-			p(`	begin := s.%sMetric.begin()`, notExported(m.Name()))
-			p(`	defer func() { s.%sMetric.End(begin, err != nil, requestBytes, replyBytes) }()`, notExported(m.Name()))
+			p(`	begin := s.%sMetrics.Begin()`, notExported(m.Name()))
+			p(`	defer func() { s.%sMetrics.End(begin, err != nil, requestBytes, replyBytes) }()`, notExported(m.Name()))
 			p(``)
 
 			// Create a child span if tracing is enabled is ctx.
 			p(`	span := %s(ctx)`, g.trace().qualify("SpanFromContext"))
 			p(` 	if span.SpanContext().IsValid() {`)
-			p(`		ctx, span = s.tracer.Start(ctx, "%s.%s.%s", trace.WithSpanKind((trace.SpanKindInternal))`,
+			p(`		ctx, span = s.tracer.Start(ctx, "%s.%s.%s", trace.WithSpanKind((trace.SpanKindInternal)))`,
 				g.pkg.Name, com.intfName(), m.Name())
 			p(`	}`)
 
@@ -1233,11 +1436,11 @@ func (g *generator) generateClientStubs(p printFn) {
 			p(`	// Call the remote method.`)
 			data := "nil"
 			if sig.Params().Len() > 1 {
-				data = "enc.Data()"
+				p(`	data := enc.Data()`)
 				p(`	requestBytes = len(data)`)
 			}
 			p(`	var results []byte`)
-			p(`	results, err = s.stub.Run(ctx, %d, %s, shardKey)`, methodIndex[m.Name()], data)
+			p(`	results, err = s.stub.Invoke(ctx, %d, %s, shardKey)`, methodIndex[m.Name()], data)
 			p(`	replyBytes = len(results)`)
 			p(`	if err != nil {`)
 			p(`		err = %s(%s, err)`, g.errorsPackage().qualify("Join"), g.akasa().qualify("RemoteCallError"))
@@ -1368,6 +1571,277 @@ func (g *generator) generateSeverStubs(p printFn) {
 		}
 	}
 
+}
+
+// generateAutoMarshalMethods generates AkasarMarshal and AkasarUnmarshal methods
+// for any types that declares itself as akasar.AutoMarshal.
+func (g *generator) generateAutoMarshalMethods(p printFn) {
+	if g.tSet.autoMarshalCandidates.Len() > 0 {
+		p(``)
+		p(`// AutoMarshal implementations.`)
+	}
+
+	sorted := g.tSet.autoMarshalCandidates.Keys()
+	sort.Slice(sorted, func(i, j int) bool {
+		ti, tj := sorted[i], sorted[j]
+		return ti.String() < tj.String()
+	})
+
+	ts := g.tSet.genTypeString
+	for _, t := range sorted {
+		var innerTypes []types.Type
+		s := t.Underlying().(*types.Struct)
+
+		p(``)
+		p(`var _ %s = (*%s)(nil)`, g.codegen().qualify("AutoMarshal"), ts(t))
+		p(`type __is_%s[T ~%s] struct{}`, t.(*types.Named).Obj().Name(), ts(s))
+		p(`var _ __is_%s[%s]`, t.(*types.Named).Obj().Name(), ts(t))
+
+		fmt := g.tSet.importPackage("fmt", "fmt")
+		p(``)
+		p(`func(x *%s) AkasarMarshal(enc *%s) {`, ts(t), g.codegen().qualify("Serializer"))
+		p(`	if x == nil {`)
+		p(`		panic(%s("%s.AkasarMarshal: nil receiver"))`, fmt.qualify("Errorf"), ts(t))
+		p(`	}`)
+		for i := 0; i < s.NumFields(); i++ {
+			fi := s.Field(i)
+			if !isAkasarAutoMarshal(fi.Type()) {
+				p(`	%s`, g.encode("enc", "x."+fi.Name(), fi.Type()))
+				innerTypes = append(innerTypes, fi.Type())
+			}
+		}
+		p(`}`)
+
+		// Generate AkasarUnmarsal method.
+		p(``)
+		p(`func (x *%s) AkasarUnmarshal(dec *%s) {`, ts(t), g.codegen().qualify("Deserializer"))
+		p(`	if x == nil {`)
+		p(`		panic(%s("%s.AkasarUnmarshal: nil receiver"))`, fmt.qualify("Errorf"), ts(t))
+		p(`	}`)
+		for i := 0; i < s.NumFields(); i++ {
+			fi := s.Field(i)
+			if !isAkasarAutoMarshal(fi.Type()) {
+				p(`	%s`, g.decode("dec", "&x."+fi.Name(), fi.Type()))
+			}
+		}
+		p(`}`)
+
+		// Generate encoding/decoding methods for any inner types.
+		for _, inner := range innerTypes {
+			g.generateEncDecMethodFor(p, inner)
+		}
+
+		if g.tSet.implementsError(t) {
+			p(`func init() { %s[*%s]() }`, g.codegen().qualify("RegisterSerializable"), ts(t))
+		}
+	}
+}
+
+func (g *generator) generateEncDecMethodFor(p printFn, t types.Type) {
+	if g.generated.At(t) != nil {
+		return
+	}
+	g.generated.Set(t, true)
+
+	ts := g.tSet.genTypeString
+
+	switch x := t.(type) {
+	case *types.Basic:
+	// 基础类型不需要
+	case *types.Pointer:
+		g.generateEncDecMethodFor(p, x.Elem())
+
+		p(``)
+		p(`func serviceAkasarEnc_%s(enc *%s, arg %s) {`, sanitize(x), g.codegen().qualify("Serializer"), ts(x))
+		p(`	if arg == nil {`)
+		p(`		enc.Bool(false)`)
+		p(`	} else {`)
+		p(`		enc.Bool(true)`)
+		p(`		%s`, g.encode("enc", "*arg", x.Elem()))
+		p(`	}`)
+		p(`}`)
+
+		p(``)
+		p(`func serviceAkasarDec_%s(dec *%s) %s {`, sanitize(x), g.codegen().qualify("Deserializer"), ts(x))
+		p(`	if !dec.Bool() {`)
+		p(`		return nil`)
+		p(`	}`)
+		p(`	var res %s`, ts(x.Elem()))
+		p(`	%s`, g.decode("dec", "&res", x.Elem()))
+		p(`	return &res`)
+		p(`}`)
+
+	case *types.Array:
+		g.generateEncDecMethodFor(p, x.Elem())
+
+		p(``)
+		p(`func serviceAkasarEnc_%s(enc *%s, arg *%s) {`, sanitize(x), g.codegen().qualify("Serializer"), ts(x))
+		p(`	for i := 0; i < %d; i++ {`, x.Len())
+		p(`		%s`, g.encode("enc", "arg[i]", x.Elem()))
+		p(`	`)
+		p(`}`)
+
+		p(``)
+		p(`func serviceAkasarDec_%s(enc *%s, res *%s) {`, sanitize(x), g.codegen().qualify("Deserializer"), ts(x))
+		p(`	for i := 0; i < %d; i++ {`, x.Len())
+		p(`		%s`, g.decode("dec", "&res[i]", x.Elem()))
+		p(`	`)
+		p(`}`)
+
+	case *types.Slice:
+		g.generateEncDecMethodFor(p, x.Elem())
+
+		p(``)
+		p(`func serviceAkasarEnc_%s(enc *%s, arg %s) {`, sanitize(x), g.codegen().qualify("Serializer"), ts(x))
+		p(`	if arg == nil {`)
+		p(`		enc.Len(-1)`)
+		p(`		return`)
+		p(`	}`)
+		p(`	enc.Len(len(arg))`)
+		p(`	for i := 0; i < len(arg); i++ {`)
+		p(`		%s`, g.encode("enc", "arg[i]", x.Elem()))
+		p(`	}`)
+		p(`}`)
+
+		p(``)
+		p(`func serviceAkasarDec_%s(dec *%s) %s {`, sanitize(x), g.codegen().qualify("Deserializer"), ts(x))
+		p(`	n := dec.Len()`)
+		p(`	if n == -1 {`)
+		p(`		return nil`)
+		p(`	}`)
+		p(`	res := make(%s, n)`, ts(x))
+		p(`	for i := 0; i < n; i++ {`)
+		p(`		%s`, g.decode("dec", "&res[i]", x.Elem()))
+		p(`	}`)
+		p(`	return res`)
+		p(`}`)
+	case *types.Map:
+		g.generateEncDecMethodFor(p, x.Key())
+		g.generateEncDecMethodFor(p, x.Elem())
+
+		p(``)
+		p(`func serviceAkasarEnc_%s(enc *%s, arg %s) {`, sanitize(x), g.codegen().qualify("Serializer"), ts(x))
+		p(`	if arg == nil {`)
+		p(`		enc.Len(-1)`)
+		p(`		return`)
+		p(`	}`)
+		p(`	enc.Len(len(arg)`)
+		p(`	for k, v := range arg {`)
+		p(`		%s`, g.encode("enc", "k", x.Key()))
+		p(`		%s`, g.encode("enc", "v", x.Elem()))
+		p(`	}`)
+		p(`}`)
+
+		p(``)
+		p(`func serviceAkasarDec_%s(dec *%s) %s {`, sanitize(x), g.codegen().qualify("Deserializer"), ts(x))
+		p(`	n := dec.Len()`)
+		p(`	if n == -1 {`)
+		p(`		return nil`)
+		p(`	}`)
+		p(`	res := make(%s, n)`, ts(x))
+		p(`	var k %s`, ts(x.Key()))
+		p(`	var v %s`, ts(x.Elem()))
+		p(`	for i := 0; i < n; i++ {`)
+		p(`		%s`, g.decode("dec", "&k", x.Key()))
+		p(`		%s`, g.decode("dec", "&v", x.Elem()))
+		p(`		res[k] = v`)
+		p(`	}`)
+		p(`}`)
+	case *types.Struct:
+		panic(fmt.Sprintf("generateEncDecFor: unexpected type: %v", t))
+	case *types.Named:
+		if g.tSet.autoMarshals.At(x) != nil || g.tSet.implementsAutoMarshal(x) {
+			return
+		}
+		g.generateEncDecMethodFor(p, x.Underlying())
+	default:
+		panic(fmt.Sprintf("generateEncDecFor: unexpected type: %v", t))
+	}
+}
+
+func (g *generator) generateEncDecMethods(p printFn) {
+	//printedHeader := false
+	printer := func(format string, args ...any) {
+		p(format, args...)
+	}
+
+	for _, com := range g.components {
+		for _, method := range com.methods() {
+			sig := method.Type().(*types.Signature)
+
+			for j := 1; j < sig.Params().Len(); j++ {
+				g.generateEncDecMethodFor(printer, sig.Params().At(j).Type())
+			}
+
+			for j := 0; j < sig.Results().Len()-1; j++ {
+				g.generateEncDecMethodFor(printer, sig.Results().At(j).Type())
+			}
+		}
+	}
+}
+
+func (g *generator) generateSizeFunction(p printFn, t types.Type) {
+	switch x := t.(type) {
+	case *types.Pointer:
+		p(`func serviceAkasarSize_%s(x %s) int {`, sanitize(t), g.tSet.genTypeString(t))
+		p(`	if x == nil {`)
+		p(`		return 1`)
+		p(`	} else {`)
+		p("		return  1 + %s", g.size("*x", x.Elem()))
+		p(`	}`)
+		p(`}`)
+	case *types.Struct:
+		p(`func serviceAkasarSize_%s(x *%s) int {`, sanitize(t), g.tSet.genTypeString(t))
+		p(`	size := 0`)
+		for i := 0; i < x.NumFields(); i++ {
+			f := x.Field(i)
+			p(`	size += %s`, g.size(fmt.Sprintf("x.%s", f.Name()), f.Type()))
+		}
+		p(`	return size`)
+		p("}")
+	case *types.Named:
+		s := x.Underlying().(*types.Struct)
+		p(`func serviceAkasarSize_%s(x *%s) int {`, sanitize(t), g.tSet.genTypeString(t))
+		p(`	size := 0`)
+		for i := 0; i < s.NumFields(); i++ {
+			f := s.Field(i)
+			p(`	size += %s`, g.size(fmt.Sprintf("x.%s", f.Name()), f.Type()))
+		}
+		p(`	return size`)
+		p("}")
+	default:
+		panic(fmt.Sprintf("generateSizeFunction: unexpected type: %v", t))
+	}
+}
+
+func (g *generator) generateImports(p printFn) {
+	p(`// Code generated by "akasar generate". DO NOT EDIT.`)
+	p(`//go:build !ignoreAkasarGen`)
+	p(``)
+	p(`package %s`, g.pkg.Name)
+	p(``)
+	p(`import (`)
+	for _, imp := range g.tSet.imports() {
+		switch {
+		case imp.local:
+		case imp.alias == "":
+			p(`	%s`, strconv.Quote(imp.path))
+		default:
+			p(`	%s %s`, imp.alias, strconv.Quote(imp.path))
+		}
+	}
+	p(`)`)
+}
+
+func (g *generator) pkgDir() string {
+	if len(g.pkg.Syntax) == 0 {
+		panic(fmt.Errorf("package %v has no source files", g.pkg))
+	}
+
+	f := g.pkg.Syntax[0]
+	fName := g.fileSet.Position(f.Package).Filename
+
+	return filepath.Dir(fName)
 }
 
 func notExported(name string) string {

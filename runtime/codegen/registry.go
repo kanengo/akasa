@@ -5,6 +5,12 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/kanengo/akasar/runtime"
+
+	"github.com/kanengo/akasar/runtime/protos"
+
+	"github.com/kanengo/akasar/internal/config"
+
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -56,6 +62,33 @@ func (r *registry) register(reg Registration) error {
 
 	r.components[reg.Iface] = ptr
 	r.componentsByName[reg.Name] = ptr
+
+	return nil
+}
+
+func (r *registry) find(path string) (*Registration, bool) {
+	r.m.Lock()
+	defer r.m.Unlock()
+	reg, ok := r.componentsByName[path]
+	return reg, ok
+}
+
+func ComponentConfigValidator(path, cfg string) error {
+	reg, ok := globalRegistry.find(path)
+	if !ok {
+		return nil
+	}
+
+	componentConfig := config.ComponentConfig(reflect.New(reg.Impl))
+	if componentConfig == nil {
+		return fmt.Errorf("unexpected configuration for component %v "+
+			"that does not support configuraion", reg.Name)
+	}
+
+	appConfig := &protos.AppConfig{Sections: map[string]string{path: cfg}}
+	if err := runtime.ParseConfigSection(path, "", appConfig.Sections, componentConfig); err != nil {
+		return fmt.Errorf("%v: bad config %w", reg.Iface, err)
+	}
 
 	return nil
 }

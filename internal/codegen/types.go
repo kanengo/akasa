@@ -3,6 +3,8 @@ package codegen
 import (
 	"fmt"
 	"go/types"
+	"path"
+	"sort"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -20,6 +22,8 @@ type typeSet struct {
 	importedByPath map[string]importPkg
 	importedByName map[string]importPkg
 	checked        typeutil.Map
+
+	autoMarshals, autoMarshalCandidates *typeutil.Map
 
 	// If sizes[t] != nil, then sizes[t] == sizeOfType(t)
 	sizes typeutil.Map
@@ -53,12 +57,14 @@ func (i importPkg) qualify(member string) string {
 	return fmt.Sprintf("%s.%s", i.name(), member)
 }
 
-func newTypeSet(pkg *packages.Package) *typeSet {
+func newTypeSet(pkg *packages.Package, autoMarshals, autoMarshalCandidates *typeutil.Map) *typeSet {
 	return &typeSet{
-		pkg:            pkg,
-		imported:       []importPkg{},
-		importedByPath: make(map[string]importPkg),
-		importedByName: make(map[string]importPkg),
+		pkg:                   pkg,
+		imported:              []importPkg{},
+		importedByPath:        make(map[string]importPkg),
+		importedByName:        make(map[string]importPkg),
+		autoMarshals:          autoMarshals,
+		autoMarshalCandidates: autoMarshalCandidates,
 	}
 }
 
@@ -87,6 +93,10 @@ func isAkasarComponents(t types.Type) bool {
 	return isAkasarType(t, "Components", 1)
 }
 
+func isAkasarAutoMarshal(t types.Type) bool {
+	return isAkasarType(t, "AutoMarshal", 0)
+}
+
 func isInvalid(t types.Type) bool {
 	return t.String() == "invalid type"
 }
@@ -106,6 +116,133 @@ func isContext(t types.Type) bool {
 	}
 
 	return named.Obj().Pkg().Path() == "context" && named.Obj().Name() == "Context"
+}
+
+func (tSet *typeSet) implementsAutoMarshal(t types.Type) bool {
+	if _, ok := t.Underlying().(*types.Interface); ok {
+		return false
+	}
+
+	obj, _, _ := types.LookupFieldOrMethod(t, true, tSet.pkg.Types, "AkasarMarshal")
+	marshal, ok := obj.(*types.Func)
+	if !ok {
+		return false
+	}
+
+	obj, _, _ = types.LookupFieldOrMethod(t, true, tSet.pkg.Types, "AkasarUnmarshal")
+	unmarshal, ok := obj.(*types.Func)
+	if !ok {
+		return false
+	}
+
+	return isAkasarMarshal(t, marshal) && isAkasarUnmarshal(t, unmarshal)
+}
+
+func isAkasarMarshal(t types.Type, m *types.Func) bool {
+	if m.Name() != "AkasarMarshal" {
+		return false
+	}
+
+	sig, ok := m.Type().(*types.Signature)
+	if !ok {
+		return false
+	}
+	recv, args, results := sig.Recv(), sig.Params(), sig.Results()
+	if args.Len() != 1 && results.Len() != 0 {
+		return false
+	}
+
+	if !isEncoderPtr(args.At(0).Type()) {
+		return false
+	}
+
+	if p, ok := recv.Type().(*types.Pointer); ok {
+		return types.Identical(p.Elem(), t)
+	} else {
+		return types.Identical(recv.Type(), t)
+	}
+}
+
+func isAkasarUnmarshal(t types.Type, m *types.Func) bool {
+	if m.Name() != "AkasarUnmarshal" {
+		return false
+	}
+
+	sig, ok := m.Type().(*types.Signature)
+	if !ok {
+		return false
+	}
+
+	recv, args, results := sig.Recv(), sig.Results(), sig.Params()
+	if args.Len() != 1 && results.Len() != 0 {
+		return false
+	}
+	if !isDecoderPtr(args.At(0).Type()) {
+		return false
+	}
+
+	if p, ok := recv.Type().(*types.Pointer); ok {
+		return types.Identical(p.Elem(), t)
+	} else {
+		return types.Identical(recv.Type(), t)
+	}
+}
+
+func isEncoderPtr(t types.Type) bool {
+	p, ok := t.(*types.Pointer)
+	if !ok {
+		return false
+	}
+	n, ok := p.Elem().(*types.Named)
+	if !ok {
+		return false
+	}
+	pth := path.Join(akasarPackagePath, "runtime", "codegen")
+	return n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == pth && n.Obj().Name() == "Serializer"
+}
+
+// isDecoderPtr returns whether t is *codegen.Decoder.
+func isDecoderPtr(t types.Type) bool {
+	p, ok := t.(*types.Pointer)
+	if !ok {
+		return false
+	}
+	n, ok := p.Elem().(*types.Named)
+	if !ok {
+		return false
+	}
+	pth := path.Join(akasarPackagePath, "runtime", "codegen")
+	return n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == pth && n.Obj().Name() == "Deserializer"
+}
+
+func isString(t types.Type) bool {
+	b, ok := t.(*types.Basic)
+	return ok && b.Kind() == types.String
+}
+
+func (tSet *typeSet) implementsError(t types.Type) bool {
+	if _, ok := t.Underlying().(*types.Interface); ok {
+		return false
+	}
+
+	obj, _, _ := types.LookupFieldOrMethod(t, true, tSet.pkg.Types, "Error")
+	method, ok := obj.(*types.Func)
+	if !ok {
+		return false
+	}
+	sig, ok := method.Type().(*types.Signature)
+	if !ok {
+		return false
+	}
+	if args := sig.Params(); args.Len() != 0 {
+		return false
+	}
+
+	if results := sig.Results(); results.Len() != 1 || !isString(results.At(0).Type()) {
+		return false
+	}
+
+	return true
 }
 
 func (tSet *typeSet) checkSerializable(t types.Type) []error {
@@ -170,6 +307,12 @@ func (tSet *typeSet) checkSerializable(t types.Type) []error {
 
 		switch x := t.(type) {
 		case *types.Named:
+
+			if tSet.autoMarshals.At(t) != nil || tSet.implementsAutoMarshal(t) {
+				tSet.checked.Set(t, true)
+				break
+			}
+
 			s, ok := x.Underlying().(*types.Struct)
 			if !ok {
 				tSet.checked.Set(t, check(x.Underlying(), path, false))
@@ -379,4 +522,11 @@ func (tSet *typeSet) isMeasurable(t types.Type) bool {
 	}
 
 	return tSet.measurable.At(t).(bool)
+}
+
+func (tSet *typeSet) imports() []importPkg {
+	sort.Slice(tSet.imported, func(i, j int) bool {
+		return tSet.imported[i].pkg < tSet.imported[j].pkg
+	})
+	return tSet.imported
 }

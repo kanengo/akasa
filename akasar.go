@@ -8,6 +8,10 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/kanengo/akasar/internal/akasar"
+
+	"github.com/kanengo/akasar/runtime/codegen"
+
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -64,7 +68,8 @@ type InstanceOf[T any] interface {
 }
 
 type Components[T any] struct {
-	logger *slog.Logger
+	logger     *slog.Logger
+	akasarInfo *akasar.Info
 }
 
 func (c Components[T]) Logger(ctx context.Context) *slog.Logger {
@@ -84,10 +89,22 @@ func (c Components[T]) setLogger(logger *slog.Logger) {
 	c.logger = logger
 }
 
+func (c Components[T]) setAkasarInfo(info *akasar.Info) {
+	c.akasarInfo = info
+}
+
 // components 实现InstanceOf接口
 func (Components[T]) components(T) {}
 
 type Root interface {
+}
+
+type WithConfig[T any] struct {
+	config T
+}
+
+func (wc *WithConfig[T]) Config() *T {
+	return &wc.config
 }
 
 type Initializer interface {
@@ -110,6 +127,12 @@ var RemoteCallError = errors.New("service akasar remote call error")
 var HealthHandler = func(w http.ResponseWriter, _ *http.Request) {
 	_, _ = fmt.Fprintf(w, "OK")
 }
+
+type AutoMarshal struct {
+}
+
+func (*AutoMarshal) AkasarMarshal(enc *codegen.Serializer)     {}
+func (*AutoMarshal) AkasarUnmarshal(enc *codegen.Deserializer) {}
 
 //=======================================
 

@@ -8,7 +8,7 @@ import (
 
 var (
 	metricNamesMu sync.RWMutex
-	metricNames   map[string]bool
+	metricNames   = map[string]bool{}
 )
 
 // MetricMap 相同 name 和 label 格式但具体 label 的值不同的 metric 合集

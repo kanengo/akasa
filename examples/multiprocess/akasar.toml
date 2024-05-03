@@ -1,0 +1,16 @@
+[serviceakasar]
+binary = "./multiprocess.exe"
+#rollout = "5m"
+env = ["env=alpha"]
+LogLevel = "debug"
+colocate = [
+    [
+        "github.com/kanengo/akasar/examples/multiprocess/components/User",
+        "github.com/kanengo/akasar/examples/multiprocess/components/Vip",
+    ],
+    [
+        "github.com/kanengo/akasar/examples/multiprocess/components/Store",
+    ]
+]
+
+

@@ -1,0 +1,10 @@
+[serviceakasar]
+binary = "./reverser.exe"
+rollout = "5m"
+
+[single]
+listeners.reverser = {address = "localhost:9000"}
+
+["github.com/kanengo/akasar/examples/reverser/Reverser"]
+DB  = "localhost:3360"
+Redis = "localhost:6379"

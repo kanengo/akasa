@@ -7,6 +7,8 @@ import (
 	"math"
 	"reflect"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/kanengo/akasar/internal/unsafex"
 )
 
@@ -104,7 +106,6 @@ func (d *Deserializer) Any() any {
 	}
 
 	return result.Interface()
-
 }
 
 func (d *Deserializer) Uint64() (val uint64) {
@@ -224,6 +225,12 @@ func (d *Deserializer) String() (val string) {
 	d.index += size
 
 	return val
+}
+
+func (d *Deserializer) UnmarshalProto(value proto.Message) {
+	if err := proto.Unmarshal(d.Bytes(), value); err != nil {
+		panic(makeDeserializerError("error decoding to proto %T: %w", value, err))
+	}
 }
 
 func (d *Deserializer) Bytes() (val []byte) {

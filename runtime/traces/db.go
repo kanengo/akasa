@@ -195,6 +195,6 @@ func spanStatus(span *protos.Span) string {
 		}
 	}
 
-	// No errors found.
+	// No uerrors found.
 	return ""
 }

@@ -68,7 +68,7 @@ message AppConfig {
   //
   // with the exception of the component associated with the application main(),
   // which is identified using the name "main".
-  ComponentGroup services = 5;
+  repeated ComponentGroup colocate = 5;
 
   // A knob that lets the user specifies how many nanoseconds it expects for
   // the rollout to take. This is used internally by Service Weaver to figure
@@ -80,6 +80,8 @@ message AppConfig {
   // All config sections (includes [serviceweaver], [<deployer>], and
   // [<component>] sections).
   map<string, string> sections = 7;
+
+  int32 log_level = 8;
 }
 
 // Deployment holds internal information necessary for an application

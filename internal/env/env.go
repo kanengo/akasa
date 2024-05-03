@@ -1,15 +1,27 @@
 package env
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
-func Parse(env []string) (map[string]string, error) {
-	if len(env)%2 != 0 {
-		return nil, fmt.Errorf("env length must be even")
+func Split(kv string) (string, string, error) {
+	k, v, ok := strings.Cut(kv, "=")
+	if !ok {
+		return "", "", fmt.Errorf("env:%q is not of form key=value", kv)
 	}
 
-	kvs := make(map[string]string, len(env)/2)
-	for i := 0; i < len(env); i += 2 {
-		kvs[env[i]] = env[i+1]
+	return k, v, nil
+}
+
+func Parse(env []string) (map[string]string, error) {
+	kvs := make(map[string]string, len(env))
+	for _, kv := range env {
+		k, v, err := Split(kv)
+		if err != nil {
+			return nil, err
+		}
+		kvs[k] = v
 	}
 
 	return kvs, nil

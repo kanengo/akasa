@@ -108,7 +108,7 @@ func fullName(t *types.Named) string {
 }
 
 func newGenerator(pkg *packages.Package, fSet *token.FileSet, autoMarshals *typeutil.Map) (*generator, error) {
-	//Abort if there were any errors loading the package.
+	//Abort if there were any uerrors loading the package.
 	var errs []error
 	for _, err := range pkg.Errors {
 		errs = append(errs, err)
@@ -845,6 +845,9 @@ func (g *generator) encode(stub, e string, t types.Type) string {
 	case *types.Struct:
 		return fmt.Sprintf("%s(%s, %s)", f(x), stub, ref(e))
 	case *types.Named:
+		if g.tSet.isProto(x) {
+			return fmt.Sprintf("%s.MarshalProto(%s)", stub, ref(e))
+		}
 		under := x.Underlying()
 		if g.tSet.autoMarshals.At(x) != nil || g.tSet.implementsAutoMarshal(x) {
 			return fmt.Sprintf("(%s).AkasarMarshal(%s)", e, stub)
@@ -903,6 +906,9 @@ func (g *generator) decode(stub, v string, t types.Type) string {
 	case *types.Struct:
 		return fmt.Sprintf("%s(%s,%s)", f(x), stub, v)
 	case *types.Named:
+		if g.tSet.isProto(x) {
+			return fmt.Sprintf("%s.UnmarshalProto(%s)", stub, v)
+		}
 		if g.tSet.autoMarshals.At(x) != nil || g.tSet.implementsAutoMarshal(x) {
 			return fmt.Sprintf("(%s).AkasarUnmarshal(%s)", v, stub)
 		}
@@ -941,7 +947,7 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 			)
 		}
 
-		// local stub
+		// single stub
 		//E.g.
 		// func(impl any, caller string, tracer trace.Tracer) any {
 		// 		return foo_local_stub{impl: impl.(Foo), tracer: tracer, ...}
@@ -1002,7 +1008,7 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 			g.codegen().qualify("Registration"),
 		)
 		p(`		Name: %q,`, comp.fullIntfName())
-		p(`		Iface: %s((%s)(nil)).Elem(),`,
+		p(`		Iface: %s((*%s)(nil)).Elem(),`,
 			reflectImport.qualify("TypeOf"),
 			g.componentRef(comp),
 		)
@@ -1119,6 +1125,9 @@ func (g *generator) preAllocatable(t types.Type) bool {
 }
 
 func (g *generator) isAkasarEncoded(t types.Type) bool {
+	if g.tSet.isProto(t) {
+		return false
+	}
 	switch x := t.(type) {
 	case *types.Basic:
 		switch x.Kind() {
@@ -1301,6 +1310,12 @@ func (g *generator) generateLocalStubs(p printFn) {
 			p(`		}()`)
 			p(`	}`)
 
+			p(`	defer func() {`)
+			p(`		if err == nil {`)
+			p(`			err = %s(recover())`, g.codegen().qualify("CatchResultUnwrapPanic"))
+			p(`		}`)
+			p(`	}()`)
+
 			b.Reset()
 			//call args
 			_, _ = fmt.Fprintf(&b, "ctx")
@@ -1313,7 +1328,16 @@ func (g *generator) generateLocalStubs(p printFn) {
 			}
 			argList := b.String()
 			p(``)
-			p(`	return s.impl.%s(%s)`, m.Name(), argList)
+
+			b.Reset()
+			for i := 0; i < signature.Results().Len()-1; i++ {
+				_, _ = fmt.Fprintf(&b, "r%d, ", i)
+			}
+			_, _ = fmt.Fprintf(&b, "err")
+			resultList := b.String()
+
+			p(`	%s = s.impl.%s(%s)`, resultList, m.Name(), argList)
+			p(`	return`)
 			p(`}`)
 		}
 	}
@@ -1455,7 +1479,14 @@ func (g *generator) generateClientStubs(p printFn) {
 			for i := 0; i < sig.Results().Len()-1; i++ {
 				rt := sig.Results().At(i).Type()
 				res := fmt.Sprintf("r%d", i)
-				p(`	%s`, g.decode("dec", ref(res), rt))
+				if x, ok := rt.(*types.Pointer); ok && g.tSet.isProto(x) {
+					tmp := fmt.Sprintf("tmp%d", i)
+					p(`	var %s %s`, tmp, g.tSet.genTypeString(x.Elem()))
+					p(`	%s`, g.decode("dec", ref(tmp), x.Elem()))
+					p(`	%s = %s`, res, ref(tmp))
+				} else {
+					p(`	%s`, g.decode("dec", ref(res), rt))
+				}
 			}
 
 			p(`	err = dec.Error()`)
@@ -1518,9 +1549,15 @@ func (g *generator) generateSeverStubs(p printFn) {
 			for i := 1; i < sig.Params().Len(); i++ {
 				at := sig.Params().At(i).Type()
 				arg := fmt.Sprintf("a%d", i-1)
-
-				p(`	var %s %s`, arg, g.tSet.genTypeString(at))
-				p(`	%s`, g.decode("dec", ref(arg), at))
+				if x, ok := at.(*types.Pointer); ok && g.tSet.isProto(x) {
+					tmp := fmt.Sprintf("tmp%d", i)
+					p(`	var %s %s`, tmp, g.tSet.genTypeString(x.Elem()))
+					p(`	%s`, g.decode("dec", ref(tmp), x.Elem()))
+					p(`	%s = %s`, arg, ref(tmp))
+				} else {
+					p(`	var %s %s`, arg, g.tSet.genTypeString(at))
+					p(`	%s`, g.decode("dec", ref(arg), at))
+				}
 			}
 
 			b.Reset()
@@ -1649,6 +1686,9 @@ func (g *generator) generateEncDecMethodFor(p printFn, t types.Type) {
 	case *types.Basic:
 	// 基础类型不需要
 	case *types.Pointer:
+		if g.tSet.isProto(x) {
+			return
+		}
 		g.generateEncDecMethodFor(p, x.Elem())
 
 		p(``)
@@ -1750,7 +1790,7 @@ func (g *generator) generateEncDecMethodFor(p printFn, t types.Type) {
 	case *types.Struct:
 		panic(fmt.Sprintf("generateEncDecFor: unexpected type: %v", t))
 	case *types.Named:
-		if g.tSet.autoMarshals.At(x) != nil || g.tSet.implementsAutoMarshal(x) {
+		if g.tSet.isProto(x) || g.tSet.autoMarshals.At(x) != nil || g.tSet.implementsAutoMarshal(x) {
 			return
 		}
 		g.generateEncDecMethodFor(p, x.Underlying())

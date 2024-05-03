@@ -245,6 +245,44 @@ func (tSet *typeSet) implementsError(t types.Type) bool {
 	return true
 }
 
+func (tSet *typeSet) isProto(t types.Type) bool {
+	if _, ok := t.Underlying().(*types.Interface); ok {
+		return false
+	}
+
+	obj, _, _ := types.LookupFieldOrMethod(t, true, tSet.pkg.Types, "ProtoReflect")
+	method, ok := obj.(*types.Func)
+	if !ok {
+		return false
+	}
+	sig, ok := method.Type().(*types.Signature)
+	if !ok {
+		return false
+	}
+	recv, args, results := sig.Recv(), sig.Params(), sig.Results()
+	if args.Len() != 0 || results.Len() != 1 {
+		return false
+	}
+	if !isProtoMessage(results.At(0).Type()) {
+		return false
+	}
+
+	if p, ok := recv.Type().(*types.Pointer); ok {
+		return types.Identical(p.Elem(), t)
+	} else {
+		return types.Identical(recv.Type(), t)
+	}
+}
+
+func isProtoMessage(t types.Type) bool {
+	n, ok := t.(*types.Named)
+	if !ok {
+		return false
+	}
+	const protoReflect = "google.golang.org/protobuf/reflect/protoreflect"
+	return n.Obj().Pkg().Path() == protoReflect && n.Obj().Name() == "Message"
+}
+
 func (tSet *typeSet) checkSerializable(t types.Type) []error {
 
 	type pathAndType struct {
@@ -308,7 +346,7 @@ func (tSet *typeSet) checkSerializable(t types.Type) []error {
 		switch x := t.(type) {
 		case *types.Named:
 
-			if tSet.autoMarshals.At(t) != nil || tSet.implementsAutoMarshal(t) {
+			if tSet.isProto(x) || tSet.autoMarshals.At(t) != nil || tSet.implementsAutoMarshal(t) {
 				tSet.checked.Set(t, true)
 				break
 			}
@@ -360,7 +398,6 @@ func (tSet *typeSet) checkSerializable(t types.Type) []error {
 			addError(fmt.Errorf("not a serializable type"))
 			return false
 		}
-
 		return tSet.checked.At(t).(bool)
 	}
 

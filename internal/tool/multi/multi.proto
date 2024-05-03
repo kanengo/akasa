@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option go_package = "github.com/kanengo/akasar/internal/tool/multi";
+
+package multi;
+
+import "runtime/protos/config.proto";
+
+message MultiConfig {
+  runtime.AppConfig app = 1;
+
+  message ListenerOptions {
+    string address = 1;
+  }
+
+  map<string, ListenerOptions> listeners = 2;
+}

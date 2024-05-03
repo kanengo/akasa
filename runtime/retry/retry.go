@@ -3,9 +3,8 @@ package retry
 import (
 	"context"
 	"math"
+	"math/rand/v2"
 	"time"
-
-	"github.com/kanengo/akasar/runtime/urandom"
 )
 
 type Retry struct {
@@ -51,7 +50,7 @@ func backOffDelay(i int, opts Options) time.Duration {
 
 func randomized(ctx context.Context, d time.Duration) {
 	const jitter = 0.4
-	mult := 1 - jitter*urandom.Float64() // 40%
+	mult := 1 - jitter*rand.Float64() // 40%
 	sleep(ctx, time.Duration(float64(d)*mult))
 }
 

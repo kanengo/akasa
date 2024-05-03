@@ -51,6 +51,8 @@ message AkasaletArgs {
   }
   repeated Redirect redirects = 12;
 
+  int32 log_level = 14;
+
   reserved 4;
 }
 

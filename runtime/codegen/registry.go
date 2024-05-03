@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"sync"
 
+	"golang.org/x/exp/maps"
+
 	"github.com/kanengo/akasar/runtime"
 
 	"github.com/kanengo/akasar/runtime/protos"
@@ -41,6 +43,14 @@ func Register(reg Registration) {
 	}
 }
 
+func Registered() []*Registration {
+	return globalRegistry.allComponents()
+}
+
+func Find(name string) (*Registration, bool) {
+	return globalRegistry.find(name)
+}
+
 func (r *registry) register(reg Registration) error {
 	r.m.Lock()
 	defer r.m.Unlock()
@@ -73,6 +83,16 @@ func (r *registry) find(path string) (*Registration, bool) {
 	return reg, ok
 }
 
+func (r *registry) allComponents() []*Registration {
+	r.m.Lock()
+	defer r.m.Unlock()
+
+	components := maps.Values(r.components)
+
+	return components
+}
+
+// ComponentConfigValidator 检查component config
 func ComponentConfigValidator(path, cfg string) error {
 	reg, ok := globalRegistry.find(path)
 	if !ok {

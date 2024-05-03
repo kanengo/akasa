@@ -1,12 +1,12 @@
 syntax = "proto3";
 
-option go_package = "github.com/kanengo/akasar/internal/tool/local";
+option go_package = "github.com/kanengo/akasar/internal/tool/single";
 
 package single;
 
 import "runtime/protos/config.proto";
 
-message LocalConfig {
+message SingleConfig {
   runtime.AppConfig app = 1;
 
   message ListenerOptions {

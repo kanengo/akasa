@@ -3,8 +3,11 @@ package logging
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/kanengo/akasar/runtime/protos"
 )
 
 type ignoreWriter struct {
@@ -15,20 +18,14 @@ func (i ignoreWriter) Write(p []byte) (n int, err error) {
 }
 
 func TestSLogger(t *testing.T) {
-	logger := slog.New(&LogHandler{JSONHandler: slog.NewJSONHandler(&ignoreWriter{}, &slog.HandlerOptions{
-		AddSource: false,
-		Level:     slog.LevelDebug,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			if len(groups) == 0 {
-				if a.Key == slog.TimeKey {
-					a.Value = slog.StringValue(a.Value.Time().Format(time.DateTime))
-					return a
-				}
-			}
-
-			return a
+	pp := &JsonPrinter{}
+	logger := slog.New(&LogHandler{
+		opts: Options{},
+		Write: func(entry *protos.LogEntry) {
+			pp.Format(entry)
+			_, _ = fmt.Fprintln(os.Stdout, pp.Format(entry))
 		},
-	})})
+	})
 
 	logger.Info("hello", "name", "leeka")
 	//logger.WithGroup("test").Info("group")
@@ -53,20 +50,14 @@ func BenchmarkCompare(b *testing.B) {
 }
 
 func BenchmarkLogHandler(b *testing.B) {
-	logger := slog.New(&LogHandler{JSONHandler: slog.NewJSONHandler(&ignoreWriter{}, &slog.HandlerOptions{
-		AddSource: false,
-		Level:     slog.LevelDebug,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			if len(groups) == 0 {
-				if a.Key == slog.TimeKey {
-					a.Value = slog.StringValue(a.Value.Time().Format(time.DateTime))
-					return a
-				}
-			}
-
-			return a
+	pp := &JsonPrinter{}
+	logger := slog.New(&LogHandler{
+		opts: Options{},
+		Write: func(entry *protos.LogEntry) {
+			pp.Format(entry)
+			//_, _ = os.Stdout.Write([]byte(entry.String()))
 		},
-	})})
+	})
 
 	b.ReportAllocs()
 

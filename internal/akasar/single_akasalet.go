@@ -4,10 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/kanengo/akasar/runtime/logging"
@@ -20,7 +24,7 @@ import (
 	"github.com/kanengo/akasar/internal/traceio"
 	"github.com/kanengo/akasar/runtime/protos"
 
-	"github.com/kanengo/akasar/internal/tool/local"
+	"github.com/kanengo/akasar/internal/tool/single"
 
 	"github.com/kanengo/akasar/runtime/traces"
 
@@ -31,17 +35,17 @@ import (
 	"github.com/kanengo/akasar/runtime/codegen"
 )
 
-type LocalAkasalet struct {
+type SingleAkasalet struct {
 	ctx context.Context
 
-	config *local.LocalConfig
+	config *single.SingleConfig
 	// Registration. 已注册的组件
 	regs       []*codegen.Registration
 	regsByName map[string]*codegen.Registration
 	regsByIntf map[reflect.Type]*codegen.Registration
 	regsByImpl map[reflect.Type]*codegen.Registration
 
-	opts         LocalAkasaletOptions
+	opts         SingleAkasaletOptions
 	deploymentId string
 	id           string
 	createdAt    time.Time
@@ -54,31 +58,37 @@ type LocalAkasalet struct {
 	quiet bool
 
 	info *Info
+
+	listeners map[string]net.Listener
 }
 
-type LocalAkasaletOptions struct {
+type SingleAkasaletOptions struct {
 	ConfigFilename string // config filename
 	Config         string //config contents
 	Quiet          bool
 	Fakes          map[reflect.Type]any
 }
 
-func parseLocalConfig(reg []*codegen.Registration, filename, contents string) (*local.LocalConfig, error) {
-	config := &local.LocalConfig{
+func parseSingleConfig(reg []*codegen.Registration, filename, contents string) (*single.SingleConfig, error) {
+	singleConfig := &single.SingleConfig{
 		App: &protos.AppConfig{},
 	}
 
 	if contents != "" {
 		app, err := runtime.ParseConfig(filename, contents, codegen.ComponentConfigValidator)
 		if err != nil {
-			return nil, fmt.Errorf("parse config: %w", err)
+			return nil, fmt.Errorf("parse singleConfig: %w", err)
 		}
-		config.App = app
+		if err := runtime.ParseConfigSection(single.ConfigKey, single.ConfigShortKey, app.Sections, singleConfig); err != nil {
+			return nil, fmt.Errorf("parse singleConfig: %w", err)
+		}
+		singleConfig.App = app
 	}
 
-	if config.App.Name == "" {
-		config.App.Name = filepath.Base(os.Args[0])
+	if singleConfig.App.Name == "" {
+		singleConfig.App.Name = filepath.Base(os.Args[0])
 	}
+
 	listeners := map[string]struct{}{}
 	for _, reg := range reg {
 		for _, listener := range reg.Listeners {
@@ -86,23 +96,23 @@ func parseLocalConfig(reg []*codegen.Registration, filename, contents string) (*
 		}
 	}
 
-	for listener := range config.Listeners {
+	for listener := range singleConfig.Listeners {
 		if _, ok := listeners[listener]; !ok {
 			return nil, fmt.Errorf("listener %s not found", listener)
 		}
 	}
 
-	return config, nil
+	return singleConfig, nil
 }
 
-func NewLocalAkasaLet(ctx context.Context, regs []*codegen.Registration, opts LocalAkasaletOptions) (*LocalAkasalet, error) {
-	// Parse localConfig.
-	localConfig, err := parseLocalConfig(regs, opts.ConfigFilename, opts.Config)
+func NewSingleAkasaLet(ctx context.Context, regs []*codegen.Registration, opts SingleAkasaletOptions) (*SingleAkasalet, error) {
+	// Parse singleConfig.
+	singleConfig, err := parseSingleConfig(regs, opts.ConfigFilename, opts.Config)
 	if err != nil {
 		return nil, err
 	}
 
-	envKvs, err := env.Parse(localConfig.App.Env)
+	envKvs, err := env.Parse(singleConfig.App.Env)
 	if err != nil {
 		return nil, err
 	}
@@ -124,14 +134,14 @@ func NewLocalAkasaLet(ctx context.Context, regs []*codegen.Registration, opts Lo
 		regsByImpl[reg.Impl] = reg
 	}
 
-	tracer, err := localTracer(ctx, "", deploymentId, id)
+	tracer, err := singleTracer(ctx, "", deploymentId, id)
 	if err != nil {
 		return nil, err
 	}
 
-	return &LocalAkasalet{
+	return &SingleAkasalet{
 		ctx:          ctx,
-		config:       localConfig,
+		config:       singleConfig,
 		regs:         regs,
 		regsByName:   regsByName,
 		regsByIntf:   regsByIntf,
@@ -142,27 +152,29 @@ func NewLocalAkasaLet(ctx context.Context, regs []*codegen.Registration, opts Lo
 		createdAt:    time.Now(),
 		tracer:       tracer,
 		info:         &Info{DeploymentID: deploymentId},
+		components:   make(map[string]any),
+		listeners:    make(map[string]net.Listener),
 	}, nil
 }
 
-func (l *LocalAkasalet) GetIface(t reflect.Type) (any, error) {
+func (l *SingleAkasalet) GetIface(t reflect.Type) (any, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	return l.getIntf(t, "root")
 }
 
-func (l *LocalAkasalet) GetImpl(t reflect.Type) (any, error) {
+func (l *SingleAkasalet) GetImpl(t reflect.Type) (any, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	return l.getImpl(t)
 }
 
-func (l *LocalAkasalet) getIntf(t reflect.Type, requester string) (any, error) {
+func (l *SingleAkasalet) getIntf(t reflect.Type, requester string) (any, error) {
 	reg, ok := l.regsByIntf[t]
 	if !ok {
-		return nil, fmt.Errorf("component %v not found; maybe you forgot to run akasar generate", t)
+		return nil, fmt.Errorf("getIntf: component %v not found; maybe you forgot to run akasar generate", t)
 	}
 	c, err := l.get(reg)
 	if err != nil {
@@ -172,38 +184,50 @@ func (l *LocalAkasalet) getIntf(t reflect.Type, requester string) (any, error) {
 	return reg.LocalStubFn(c, requester, l.tracer), nil
 }
 
-func (l *LocalAkasalet) getImpl(t reflect.Type) (any, error) {
+func (l *SingleAkasalet) getImpl(t reflect.Type) (any, error) {
 	reg, ok := l.regsByImpl[t]
 	if !ok {
-		return nil, fmt.Errorf("component %v not found; maybe you forgot to run akasar generate", t)
+		return nil, fmt.Errorf("getImpl: component %v not found; maybe you forgot to run akasar generate", t)
 	}
 
 	return l.get(reg)
 }
 
-type localLogWriter struct {
+type singleLogWriter struct {
 	quiet bool
 }
 
-func (w localLogWriter) Write(p []byte) (n int, err error) {
+func (w singleLogWriter) Write(p []byte) (n int, err error) {
 	if w.quiet {
 		return
 	}
-	return os.Stderr.Write(p)
+	return os.Stdout.Write(p)
 }
 
-func (l *LocalAkasalet) logger(name string) *slog.Logger {
-	logger := slog.New(logging.NewLogHandler(localLogWriter{quiet: l.quiet}, logging.Options{
+func (l *SingleAkasalet) logger(name string) *slog.Logger {
+	pp := logging.NewJsonPrinter()
+	logger := slog.New(logging.NewLogHandler(func(entry *protos.LogEntry) {
+		if l.quiet {
+			return
+		}
+		if entry.Level == slog.LevelError.String() {
+			_, _ = fmt.Fprintln(os.Stderr, pp.Format(entry))
+		} else {
+			_, _ = fmt.Fprintln(os.Stdout, pp.Format(entry))
+		}
+
+	}, logging.Options{
 		App:        l.config.App.Name,
 		Deployment: l.deploymentId,
 		Component:  name,
-		Attrs:      nil,
-	}, slog.LevelDebug))
+		Akasalet:   l.id,
+		Level:      l.config.App.LogLevel,
+	}))
 
 	return logger
 }
 
-func (l *LocalAkasalet) get(reg *codegen.Registration) (any, error) {
+func (l *SingleAkasalet) get(reg *codegen.Registration) (any, error) {
 	if c, ok := l.components[reg.Name]; ok {
 		return c, nil
 	}
@@ -222,7 +246,7 @@ func (l *LocalAkasalet) get(reg *codegen.Registration) (any, error) {
 		}
 	}
 
-	// Set logger
+	// Set sysLogger
 	if err := SetLogger(obj, l.logger(reg.Name)); err != nil {
 		return nil, err
 	}
@@ -235,6 +259,18 @@ func (l *LocalAkasalet) get(reg *codegen.Registration) (any, error) {
 	// Fill ref fields.
 	if err := FillRefs(obj, func(t reflect.Type) (any, error) {
 		return l.getIntf(t, reg.Name)
+	}); err != nil {
+		return nil, err
+	}
+
+	// Fill listener fields.
+	if err := FillListeners(obj, func(name string) (net.Listener, string, error) {
+		lis, err := l.listen(name)
+		if err != nil {
+			return nil, "", err
+		}
+
+		return lis, "", nil
 	}); err != nil {
 		return nil, err
 	}
@@ -253,8 +289,60 @@ func (l *LocalAkasalet) get(reg *codegen.Registration) (any, error) {
 	return obj, nil
 }
 
-func localTracer(ctx context.Context, app, deploymentId, id string) (trace.Tracer, error) {
-	traceDB, err := traces.OpenDB(ctx, local.TracesDBFile)
+func (l *SingleAkasalet) listen(name string) (net.Listener, error) {
+	if lis, ok := l.listeners[name]; ok {
+		return lis, nil
+	}
+
+	var addr string
+	if opts, ok := l.config.Listeners[name]; ok {
+		addr = opts.Address
+	}
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+
+	l.listeners[name] = lis
+
+	return lis, nil
+}
+
+func (l *SingleAkasalet) ServeStatus(ctx context.Context) error {
+	noopLogger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelError + 1,
+	}))
+
+	_ = noopLogger
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
+
+	mux := http.NewServeMux()
+	mux.Handle("/debug/pprof/", http.DefaultServeMux)
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		return err
+	}
+	errs := make(chan error, 1)
+	go func() {
+		errs <- serveHTTP(ctx, lis, mux)
+	}()
+
+	select {
+	case err := <-errs:
+		return err
+	case <-ctx.Done():
+		code := 0
+		os.Exit(code)
+	}
+
+	return nil
+}
+
+func singleTracer(ctx context.Context, app, deploymentId, id string) (trace.Tracer, error) {
+	traceDB, err := traces.OpenDB(ctx, single.TracesDBFile)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open traces db: %w", err)
 	}
@@ -263,4 +351,18 @@ func localTracer(ctx context.Context, app, deploymentId, id string) (trace.Trace
 	})
 
 	return tracer(exporter, app, deploymentId, id), nil
+}
+
+func serveHTTP(ctx context.Context, lis net.Listener, handler http.Handler) error {
+	svr := http.Server{Handler: handler}
+	errs := make(chan error, 1)
+	go func() {
+		errs <- svr.Serve(lis)
+	}()
+	select {
+	case err := <-errs:
+		return err
+	case <-ctx.Done():
+		return svr.Shutdown(ctx)
+	}
 }

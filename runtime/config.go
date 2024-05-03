@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -12,7 +13,10 @@ import (
 	"github.com/kanengo/akasar/runtime/protos"
 )
 
+// ParseConfig 解析配置 获取 app section配置， 以及缓存其他各个section配置原始数据到 app.Sections 里
+// 后续再用 ParseConfigSection 解析对应的section配置
 func ParseConfig(file string, input string, sectionValidator func(string, string) error) (*protos.AppConfig, error) {
+	// 获取每个 section
 	var sections map[string]toml.Primitive
 	_, err := toml.Decode(input, &sections)
 	if err != nil {
@@ -41,6 +45,7 @@ func ParseConfig(file string, input string, sectionValidator func(string, string
 	return config, nil
 }
 
+// ParseConfigSection 解析某个section 配置
 func ParseConfigSection(key, shortKey string, sections map[string]string, dst any) error {
 	section, ok := sections[key]
 	if shortKey != "" {
@@ -83,8 +88,9 @@ func extractApp(file string, config *protos.AppConfig) error {
 		Binary   string
 		Args     []string
 		Env      []string
-		Services []string
+		Colocate [][]string
 		Rollout  time.Duration
+		LogLevel string
 	}
 
 	parsed := &appConfig{}
@@ -97,7 +103,10 @@ func extractApp(file string, config *protos.AppConfig) error {
 	config.Args = parsed.Args
 	config.Env = parsed.Env
 	config.RolloutNanos = int64(parsed.Rollout)
-	config.Services = &protos.ComponentGroup{Components: parsed.Services}
+	for _, colocate := range parsed.Colocate {
+		group := &protos.ComponentGroup{Components: colocate}
+		config.Colocate = append(config.Colocate, group)
+	}
 
 	if config.Name == "" && config.Binary != "" {
 		config.Name = filepath.Base(config.Binary)
@@ -115,20 +124,50 @@ func extractApp(file string, config *protos.AppConfig) error {
 		return err
 	}
 
-	if err := checkSameService(config); err != nil {
+	if err := checkSameComponents(config); err != nil {
 		return err
 	}
+
+	logLevel, err := parseLogLevel(parsed.LogLevel)
+	if err != nil {
+		return err
+	}
+
+	config.LogLevel = logLevel
 
 	return nil
 }
 
-func checkSameService(c *protos.AppConfig) error {
+func parseLogLevel(logLevel string) (int32, error) {
+	cl := logLevel
+	l := slog.LevelInfo
+	logLevel = strings.ToLower(logLevel)
+	switch logLevel {
+	case "debug":
+		l = slog.LevelDebug
+	case "info", "":
+	case "warn", "warning":
+		l = slog.LevelWarn
+	case "error":
+		l = slog.LevelError
+	case "fatal":
+		l = slog.LevelError + 1
+	default:
+		return 0, fmt.Errorf("invalid log level: %q", cl)
+	}
+
+	return int32(l), nil
+}
+
+func checkSameComponents(c *protos.AppConfig) error {
 	seen := make(map[string]struct{})
-	for _, component := range c.Services.Components {
-		if _, ok := seen[component]; ok {
-			return fmt.Errorf("component %q is repeated", component)
+	for _, componentGroup := range c.Colocate {
+		for _, component := range componentGroup.Components {
+			if _, ok := seen[component]; ok {
+				return fmt.Errorf("component %q is repeated", component)
+			}
+			seen[component] = struct{}{}
 		}
-		seen[component] = struct{}{}
 	}
 
 	return nil

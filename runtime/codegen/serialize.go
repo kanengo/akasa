@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/kanengo/akasar/internal/umath"
 
 	"github.com/kanengo/akasar/internal/unsafex"
@@ -37,7 +39,7 @@ func NewSerializer(size ...int) *Serializer {
 		return enc
 	}
 
-	return &Serializer{buf: make([]byte, 0, 64)}
+	return &Serializer{buf: make([]byte, 0, 128)}
 }
 
 func (s *Serializer) grow(bytesNeeded int) {
@@ -49,7 +51,7 @@ func (s *Serializer) grow(bytesNeeded int) {
 	}
 
 	newSize := umath.FindNearestPow2(c + 1)
-	fmt.Printf("new cap size:%d\n", newSize)
+	//fmt.Printf("new cap size:%d\n", newSize)
 	buf := make([]byte, 0, newSize)
 	buf = append(buf, s.buf...)
 
@@ -116,6 +118,14 @@ func (s *Serializer) String(val string) {
 	}
 	s.grow(n)
 	s.buf = append(s.buf, unsafex.StringToBytes(val)...)
+}
+
+func (s *Serializer) MarshalProto(value proto.Message) {
+	bs, err := proto.Marshal(value)
+	if err != nil {
+		panic(makeSerializerError("error encoding to proto %T: %w", value, err))
+	}
+	s.Bytes(bs)
 }
 
 func (s *Serializer) Bytes(val []byte) {

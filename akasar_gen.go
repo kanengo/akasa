@@ -28,10 +28,25 @@ func init() {
 			return akasaletControlServerStub{impl: impl.(akasaletControl)}
 		},
 	})
+	codegen.Register(codegen.Registration{
+		Name:  "github.com/kanengo/akasar/deployerControl",
+		Iface: reflect.TypeOf((*deployerControl)(nil)).Elem(),
+		Impl:  reflect.TypeOf(localDeployerControl{}),
+		LocalStubFn: func(impl any, caller string, tracer trace.Tracer) any {
+			return deployerControlLocalStub{impl: impl.(deployerControl), tracer: tracer, activateComponentMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/kanengo/akasar/deployerControl", Method: "ActivateComponent", Remote: false}), exportListenerMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/kanengo/akasar/deployerControl", Method: "ExportListener", Remote: false}), getListenerAddressMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/kanengo/akasar/deployerControl", Method: "GetListenerAddress", Remote: false}), handlerTraceSpansMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/kanengo/akasar/deployerControl", Method: "HandlerTraceSpans", Remote: false}), logBatchMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/kanengo/akasar/deployerControl", Method: "LogBatch", Remote: false})}
+		},
+		ClientStubFn: func(stub codegen.Stub, caller string, tracer trace.Tracer) any {
+			return deployerControlClientStub{stub: stub, activateComponentMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/kanengo/akasar/deployerControl", Method: "ActivateComponent", Remote: true}), exportListenerMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/kanengo/akasar/deployerControl", Method: "ExportListener", Remote: true}), getListenerAddressMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/kanengo/akasar/deployerControl", Method: "GetListenerAddress", Remote: true}), handlerTraceSpansMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/kanengo/akasar/deployerControl", Method: "HandlerTraceSpans", Remote: true}), logBatchMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/kanengo/akasar/deployerControl", Method: "LogBatch", Remote: true})}
+		},
+		ServerStubFn: func(impl any) codegen.Server {
+			return deployerControlServerStub{impl: impl.(deployerControl)}
+		},
+	})
 }
 
 // akasar.InstanceOf checks.
 var _ InstanceOf[akasaletControl] = (*noopAkasaletControl)(nil)
+var _ InstanceOf[deployerControl] = (*localDeployerControl)(nil)
 
 // Local stub implementations.
 
@@ -229,6 +244,149 @@ func (s akasaletControlLocalStub) UpdateRoutingInfo(ctx context.Context, a0 *pro
 	}()
 
 	r0, err = s.impl.UpdateRoutingInfo(ctx, a0)
+	return
+}
+
+type deployerControlLocalStub struct {
+	impl                      deployerControl
+	tracer                    trace.Tracer
+	activateComponentMetrics  *codegen.MethodMetrics
+	exportListenerMetrics     *codegen.MethodMetrics
+	getListenerAddressMetrics *codegen.MethodMetrics
+	handlerTraceSpansMetrics  *codegen.MethodMetrics
+	logBatchMetrics           *codegen.MethodMetrics
+}
+
+// Check that deployerControlLocalStub implements the deployerControl interface
+var _ deployerControl = (*deployerControlLocalStub)(nil)
+
+func (s deployerControlLocalStub) ActivateComponent(ctx context.Context, a0 *protos.ActivateComponentRequest) (r0 *protos.ActivateComponentReply, err error) {
+	// Update metrics.
+	begin := s.activateComponentMetrics.Begin()
+	defer func() { s.activateComponentMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "akasar.deployerControl.ActivateComponent", trace.WithSpanKind((trace.SpanKindInternal)))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+	defer func() {
+		if err == nil {
+			err = codegen.CatchResultUnwrapPanic(recover())
+		}
+	}()
+
+	r0, err = s.impl.ActivateComponent(ctx, a0)
+	return
+}
+
+func (s deployerControlLocalStub) ExportListener(ctx context.Context, a0 *protos.ExportListenerRequest) (r0 *protos.ExportListenerReply, err error) {
+	// Update metrics.
+	begin := s.exportListenerMetrics.Begin()
+	defer func() { s.exportListenerMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "akasar.deployerControl.ExportListener", trace.WithSpanKind((trace.SpanKindInternal)))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+	defer func() {
+		if err == nil {
+			err = codegen.CatchResultUnwrapPanic(recover())
+		}
+	}()
+
+	r0, err = s.impl.ExportListener(ctx, a0)
+	return
+}
+
+func (s deployerControlLocalStub) GetListenerAddress(ctx context.Context, a0 *protos.GetListenerAddressRequest) (r0 *protos.GetListenerAddressReply, err error) {
+	// Update metrics.
+	begin := s.getListenerAddressMetrics.Begin()
+	defer func() { s.getListenerAddressMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "akasar.deployerControl.GetListenerAddress", trace.WithSpanKind((trace.SpanKindInternal)))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+	defer func() {
+		if err == nil {
+			err = codegen.CatchResultUnwrapPanic(recover())
+		}
+	}()
+
+	r0, err = s.impl.GetListenerAddress(ctx, a0)
+	return
+}
+
+func (s deployerControlLocalStub) HandlerTraceSpans(ctx context.Context, a0 *protos.TraceSpans) (err error) {
+	// Update metrics.
+	begin := s.handlerTraceSpansMetrics.Begin()
+	defer func() { s.handlerTraceSpansMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "akasar.deployerControl.HandlerTraceSpans", trace.WithSpanKind((trace.SpanKindInternal)))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+	defer func() {
+		if err == nil {
+			err = codegen.CatchResultUnwrapPanic(recover())
+		}
+	}()
+
+	err = s.impl.HandlerTraceSpans(ctx, a0)
+	return
+}
+
+func (s deployerControlLocalStub) LogBatch(ctx context.Context, a0 *protos.LogEntryBatch) (err error) {
+	// Update metrics.
+	begin := s.logBatchMetrics.Begin()
+	defer func() { s.logBatchMetrics.End(begin, err != nil, 0, 0) }()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		// Create a child span for this method.
+		ctx, span = s.tracer.Start(ctx, "akasar.deployerControl.LogBatch", trace.WithSpanKind((trace.SpanKindInternal)))
+		defer func() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
+			span.End()
+		}()
+	}
+	defer func() {
+		if err == nil {
+			err = codegen.CatchResultUnwrapPanic(recover())
+		}
+	}()
+
+	err = s.impl.LogBatch(ctx, a0)
 	return
 }
 
@@ -613,6 +771,277 @@ func (s akasaletControlClientStub) UpdateRoutingInfo(ctx context.Context, a0 *pr
 	return
 }
 
+type deployerControlClientStub struct {
+	stub                      codegen.Stub
+	tracer                    trace.Tracer
+	activateComponentMetrics  *codegen.MethodMetrics
+	exportListenerMetrics     *codegen.MethodMetrics
+	getListenerAddressMetrics *codegen.MethodMetrics
+	handlerTraceSpansMetrics  *codegen.MethodMetrics
+	logBatchMetrics           *codegen.MethodMetrics
+}
+
+// Check that deployerControlClientStub implements the deployerControl interface
+var _ deployerControl = (*deployerControlClientStub)(nil)
+
+func (s deployerControlClientStub) ActivateComponent(ctx context.Context, a0 *protos.ActivateComponentRequest) (r0 *protos.ActivateComponentReply, err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.activateComponentMetrics.Begin()
+	defer func() { s.activateComponentMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		ctx, span = s.tracer.Start(ctx, "akasar.deployerControl.ActivateComponent", trace.WithSpanKind((trace.SpanKindInternal)))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
+	// Encode arguments.
+	enc := codegen.NewSerializer()
+	serviceAkasarEnc_ptr_ActivateComponentRequest_187167a9(enc, a0)
+	var shardKey uint64
+
+	// Call the remote method.
+	data := enc.Data()
+	requestBytes = len(data)
+	var results []byte
+	results, err = s.stub.Invoke(ctx, 0, nil, shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDeserializer(results)
+	r0 = serviceAkasarDec_ptr_ActivateComponentReply_ae54a0de(dec)
+	err = dec.Error()
+
+	return
+}
+
+func (s deployerControlClientStub) ExportListener(ctx context.Context, a0 *protos.ExportListenerRequest) (r0 *protos.ExportListenerReply, err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.exportListenerMetrics.Begin()
+	defer func() { s.exportListenerMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		ctx, span = s.tracer.Start(ctx, "akasar.deployerControl.ExportListener", trace.WithSpanKind((trace.SpanKindInternal)))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
+	// Encode arguments.
+	enc := codegen.NewSerializer()
+	serviceAkasarEnc_ptr_ExportListenerRequest_b81b65c2(enc, a0)
+	var shardKey uint64
+
+	// Call the remote method.
+	data := enc.Data()
+	requestBytes = len(data)
+	var results []byte
+	results, err = s.stub.Invoke(ctx, 1, nil, shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDeserializer(results)
+	r0 = serviceAkasarDec_ptr_ExportListenerReply_1f22e53a(dec)
+	err = dec.Error()
+
+	return
+}
+
+func (s deployerControlClientStub) GetListenerAddress(ctx context.Context, a0 *protos.GetListenerAddressRequest) (r0 *protos.GetListenerAddressReply, err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.getListenerAddressMetrics.Begin()
+	defer func() { s.getListenerAddressMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		ctx, span = s.tracer.Start(ctx, "akasar.deployerControl.GetListenerAddress", trace.WithSpanKind((trace.SpanKindInternal)))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
+	// Encode arguments.
+	enc := codegen.NewSerializer()
+	serviceAkasarEnc_ptr_GetListenerAddressRequest_adb1b42c(enc, a0)
+	var shardKey uint64
+
+	// Call the remote method.
+	data := enc.Data()
+	requestBytes = len(data)
+	var results []byte
+	results, err = s.stub.Invoke(ctx, 2, nil, shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDeserializer(results)
+	r0 = serviceAkasarDec_ptr_GetListenerAddressReply_41221db9(dec)
+	err = dec.Error()
+
+	return
+}
+
+func (s deployerControlClientStub) HandlerTraceSpans(ctx context.Context, a0 *protos.TraceSpans) (err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.handlerTraceSpansMetrics.Begin()
+	defer func() { s.handlerTraceSpansMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		ctx, span = s.tracer.Start(ctx, "akasar.deployerControl.HandlerTraceSpans", trace.WithSpanKind((trace.SpanKindInternal)))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
+	// Encode arguments.
+	enc := codegen.NewSerializer()
+	serviceAkasarEnc_ptr_TraceSpans_436f9b86(enc, a0)
+	var shardKey uint64
+
+	// Call the remote method.
+	data := enc.Data()
+	requestBytes = len(data)
+	var results []byte
+	results, err = s.stub.Invoke(ctx, 3, nil, shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDeserializer(results)
+	err = dec.Error()
+
+	return
+}
+
+func (s deployerControlClientStub) LogBatch(ctx context.Context, a0 *protos.LogEntryBatch) (err error) {
+	// Update metrics.
+	var requestBytes, replyBytes int
+	begin := s.logBatchMetrics.Begin()
+	defer func() { s.logBatchMetrics.End(begin, err != nil, requestBytes, replyBytes) }()
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		ctx, span = s.tracer.Start(ctx, "akasar.deployerControl.LogBatch", trace.WithSpanKind((trace.SpanKindInternal)))
+	}
+
+	defer func() {
+		// Catch and return any panics detected during encoding/decoding/rpc
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+			if err != nil {
+				err = errors.Join(RemoteCallError, err)
+			}
+		}
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+
+	}()
+
+	// Encode arguments.
+	enc := codegen.NewSerializer()
+	serviceAkasarEnc_ptr_LogEntryBatch_041d9c57(enc, a0)
+	var shardKey uint64
+
+	// Call the remote method.
+	data := enc.Data()
+	requestBytes = len(data)
+	var results []byte
+	results, err = s.stub.Invoke(ctx, 4, nil, shardKey)
+	replyBytes = len(results)
+	if err != nil {
+		err = errors.Join(RemoteCallError, err)
+		return
+	}
+
+	// Decode the results.
+	dec := codegen.NewDeserializer(results)
+	err = dec.Error()
+
+	return
+}
+
 // Server stub implementation.
 
 type akasaletControlServerStub struct {
@@ -787,6 +1216,134 @@ func (s *akasaletControlServerStub) updateRoutingInfo(ctx context.Context, args 
 	//Encode the results.
 	enc := codegen.NewSerializer()
 	serviceAkasarEnc_ptr_UpdateRoutingInfoReply_13c3ef0e(enc, r0)
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+type deployerControlServerStub struct {
+	impl deployerControl
+}
+
+// Check that deployerControlServerStub is implements the codegen.Server interface.
+var _ codegen.Server = (*deployerControlServerStub)(nil)
+
+// GetHandleFn implements the codegen.Server interface.
+func (s deployerControlServerStub) GetHandleFn(method string) func(ctx context.Context, args []byte) ([]byte, error) {
+	switch method {
+	case "ActivateComponent":
+		return s.activateComponent
+	case "ExportListener":
+		return s.exportListener
+	case "GetListenerAddress":
+		return s.getListenerAddress
+	case "HandlerTraceSpans":
+		return s.handlerTraceSpans
+	case "LogBatch":
+		return s.logBatch
+	default:
+		return nil
+	}
+}
+
+func (s *deployerControlServerStub) activateComponent(ctx context.Context, args []byte) (res []byte, err error) {
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Encode arguments.
+	dec := codegen.NewDeserializer(args)
+	var a0 *protos.ActivateComponentRequest
+	a0 = serviceAkasarDec_ptr_ActivateComponentRequest_187167a9(dec)
+
+	r0, appErr := s.impl.ActivateComponent(ctx, a0)
+
+	//Encode the results.
+	enc := codegen.NewSerializer()
+	serviceAkasarEnc_ptr_ActivateComponentReply_ae54a0de(enc, r0)
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+func (s *deployerControlServerStub) exportListener(ctx context.Context, args []byte) (res []byte, err error) {
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Encode arguments.
+	dec := codegen.NewDeserializer(args)
+	var a0 *protos.ExportListenerRequest
+	a0 = serviceAkasarDec_ptr_ExportListenerRequest_b81b65c2(dec)
+
+	r0, appErr := s.impl.ExportListener(ctx, a0)
+
+	//Encode the results.
+	enc := codegen.NewSerializer()
+	serviceAkasarEnc_ptr_ExportListenerReply_1f22e53a(enc, r0)
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+func (s *deployerControlServerStub) getListenerAddress(ctx context.Context, args []byte) (res []byte, err error) {
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Encode arguments.
+	dec := codegen.NewDeserializer(args)
+	var a0 *protos.GetListenerAddressRequest
+	a0 = serviceAkasarDec_ptr_GetListenerAddressRequest_adb1b42c(dec)
+
+	r0, appErr := s.impl.GetListenerAddress(ctx, a0)
+
+	//Encode the results.
+	enc := codegen.NewSerializer()
+	serviceAkasarEnc_ptr_GetListenerAddressReply_41221db9(enc, r0)
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+func (s *deployerControlServerStub) handlerTraceSpans(ctx context.Context, args []byte) (res []byte, err error) {
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Encode arguments.
+	dec := codegen.NewDeserializer(args)
+	var a0 *protos.TraceSpans
+	a0 = serviceAkasarDec_ptr_TraceSpans_436f9b86(dec)
+
+	appErr := s.impl.HandlerTraceSpans(ctx, a0)
+
+	//Encode the results.
+	enc := codegen.NewSerializer()
+	enc.Error(appErr)
+	return enc.Data(), nil
+}
+
+func (s *deployerControlServerStub) logBatch(ctx context.Context, args []byte) (res []byte, err error) {
+	defer func() {
+		if err == nil {
+			err = codegen.CatchPanics(recover())
+		}
+	}()
+
+	// Encode arguments.
+	dec := codegen.NewDeserializer(args)
+	var a0 *protos.LogEntryBatch
+	a0 = serviceAkasarDec_ptr_LogEntryBatch_041d9c57(dec)
+
+	appErr := s.impl.LogBatch(ctx, a0)
+
+	//Encode the results.
+	enc := codegen.NewSerializer()
 	enc.Error(appErr)
 	return enc.Data(), nil
 }
@@ -1039,6 +1596,150 @@ func serviceAkasarDec_ptr_UpdateRoutingInfoReply_13c3ef0e(dec *codegen.Deseriali
 		return nil
 	}
 	var res protos.UpdateRoutingInfoReply
+	dec.UnmarshalProto(&res)
+	return &res
+}
+
+func serviceAkasarEnc_ptr_ActivateComponentRequest_187167a9(enc *codegen.Serializer, arg *protos.ActivateComponentRequest) {
+	if arg == nil {
+		enc.Bool(false)
+	} else {
+		enc.Bool(true)
+		enc.MarshalProto(arg)
+	}
+}
+
+func serviceAkasarDec_ptr_ActivateComponentRequest_187167a9(dec *codegen.Deserializer) *protos.ActivateComponentRequest {
+	if !dec.Bool() {
+		return nil
+	}
+	var res protos.ActivateComponentRequest
+	dec.UnmarshalProto(&res)
+	return &res
+}
+
+func serviceAkasarEnc_ptr_ActivateComponentReply_ae54a0de(enc *codegen.Serializer, arg *protos.ActivateComponentReply) {
+	if arg == nil {
+		enc.Bool(false)
+	} else {
+		enc.Bool(true)
+		enc.MarshalProto(arg)
+	}
+}
+
+func serviceAkasarDec_ptr_ActivateComponentReply_ae54a0de(dec *codegen.Deserializer) *protos.ActivateComponentReply {
+	if !dec.Bool() {
+		return nil
+	}
+	var res protos.ActivateComponentReply
+	dec.UnmarshalProto(&res)
+	return &res
+}
+
+func serviceAkasarEnc_ptr_ExportListenerRequest_b81b65c2(enc *codegen.Serializer, arg *protos.ExportListenerRequest) {
+	if arg == nil {
+		enc.Bool(false)
+	} else {
+		enc.Bool(true)
+		enc.MarshalProto(arg)
+	}
+}
+
+func serviceAkasarDec_ptr_ExportListenerRequest_b81b65c2(dec *codegen.Deserializer) *protos.ExportListenerRequest {
+	if !dec.Bool() {
+		return nil
+	}
+	var res protos.ExportListenerRequest
+	dec.UnmarshalProto(&res)
+	return &res
+}
+
+func serviceAkasarEnc_ptr_ExportListenerReply_1f22e53a(enc *codegen.Serializer, arg *protos.ExportListenerReply) {
+	if arg == nil {
+		enc.Bool(false)
+	} else {
+		enc.Bool(true)
+		enc.MarshalProto(arg)
+	}
+}
+
+func serviceAkasarDec_ptr_ExportListenerReply_1f22e53a(dec *codegen.Deserializer) *protos.ExportListenerReply {
+	if !dec.Bool() {
+		return nil
+	}
+	var res protos.ExportListenerReply
+	dec.UnmarshalProto(&res)
+	return &res
+}
+
+func serviceAkasarEnc_ptr_GetListenerAddressRequest_adb1b42c(enc *codegen.Serializer, arg *protos.GetListenerAddressRequest) {
+	if arg == nil {
+		enc.Bool(false)
+	} else {
+		enc.Bool(true)
+		enc.MarshalProto(arg)
+	}
+}
+
+func serviceAkasarDec_ptr_GetListenerAddressRequest_adb1b42c(dec *codegen.Deserializer) *protos.GetListenerAddressRequest {
+	if !dec.Bool() {
+		return nil
+	}
+	var res protos.GetListenerAddressRequest
+	dec.UnmarshalProto(&res)
+	return &res
+}
+
+func serviceAkasarEnc_ptr_GetListenerAddressReply_41221db9(enc *codegen.Serializer, arg *protos.GetListenerAddressReply) {
+	if arg == nil {
+		enc.Bool(false)
+	} else {
+		enc.Bool(true)
+		enc.MarshalProto(arg)
+	}
+}
+
+func serviceAkasarDec_ptr_GetListenerAddressReply_41221db9(dec *codegen.Deserializer) *protos.GetListenerAddressReply {
+	if !dec.Bool() {
+		return nil
+	}
+	var res protos.GetListenerAddressReply
+	dec.UnmarshalProto(&res)
+	return &res
+}
+
+func serviceAkasarEnc_ptr_TraceSpans_436f9b86(enc *codegen.Serializer, arg *protos.TraceSpans) {
+	if arg == nil {
+		enc.Bool(false)
+	} else {
+		enc.Bool(true)
+		enc.MarshalProto(arg)
+	}
+}
+
+func serviceAkasarDec_ptr_TraceSpans_436f9b86(dec *codegen.Deserializer) *protos.TraceSpans {
+	if !dec.Bool() {
+		return nil
+	}
+	var res protos.TraceSpans
+	dec.UnmarshalProto(&res)
+	return &res
+}
+
+func serviceAkasarEnc_ptr_LogEntryBatch_041d9c57(enc *codegen.Serializer, arg *protos.LogEntryBatch) {
+	if arg == nil {
+		enc.Bool(false)
+	} else {
+		enc.Bool(true)
+		enc.MarshalProto(arg)
+	}
+}
+
+func serviceAkasarDec_ptr_LogEntryBatch_041d9c57(dec *codegen.Deserializer) *protos.LogEntryBatch {
+	if !dec.Bool() {
+		return nil
+	}
+	var res protos.LogEntryBatch
 	dec.UnmarshalProto(&res)
 	return &res
 }

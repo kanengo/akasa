@@ -17,6 +17,7 @@ type app struct {
 
 func main() {
 	err := akasar.Run(context.Background(), func(ctx context.Context, t *app) error {
+		t.Logger(ctx).Info("app start")
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		select {

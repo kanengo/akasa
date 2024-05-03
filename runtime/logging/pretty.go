@@ -16,15 +16,15 @@ type PrettyFormatter interface {
 	Format(*protos.LogEntry) string
 }
 
-// JsonPrinter pretty prints log entries to json string.
-type JsonPrinter struct {
+// PrettyPrinter pretty prints log entries to json string.
+type PrettyPrinter struct {
 	mu  sync.Mutex
 	b   strings.Builder
 	sep string //写入下一个key前的分隔符
 }
 
-func NewJsonPrinter() *JsonPrinter {
-	return &JsonPrinter{}
+func NewPrettyPrinter() *PrettyPrinter {
+	return &PrettyPrinter{}
 }
 
 const (
@@ -32,7 +32,7 @@ const (
 	nodeKey      = "node"
 )
 
-func (p *JsonPrinter) Format(entry *protos.LogEntry) string {
+func (p *PrettyPrinter) Format(entry *protos.LogEntry) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.b.Reset()
@@ -83,20 +83,20 @@ func (p *JsonPrinter) Format(entry *protos.LogEntry) string {
 	return p.b.String()
 }
 
-func (p *JsonPrinter) appendKey(key string) {
+func (p *PrettyPrinter) appendKey(key string) {
 	p.b.WriteString(p.sep)
 	p.appendString(key)
 	p.b.WriteByte(':')
 	p.sep = ","
 }
 
-func (p *JsonPrinter) appendString(str string) {
+func (p *PrettyPrinter) appendString(str string) {
 	p.b.WriteByte('"')
 	appendEscapedJSONString(&p.b, str)
 	p.b.WriteByte('"')
 }
 
-func (p *JsonPrinter) appendTime(t time.Time) {
+func (p *PrettyPrinter) appendTime(t time.Time) {
 	p.appendString(t.Format("2006-01-02 15:04:05.000000"))
 }
 

@@ -47,11 +47,11 @@ func (p *ProcessChild) Start(ctx context.Context, config *protos.AppConfig, args
 	cmd := pipe.CommandContext(ctx, config.Binary, config.Args...)
 
 	// Create pipes that capture child outputs.
-	outpipe, err := cmd.StdoutPipe()
+	outPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("create stdout pipe: %w", err)
 	}
-	errpipe, err := cmd.StderrPipe()
+	errPipe, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("create stderr pipe: %w", err)
 	}
@@ -65,8 +65,8 @@ func (p *ProcessChild) Start(ctx context.Context, config *protos.AppConfig, args
 	}
 
 	p.cmd = cmd
-	p.stdout = outpipe
-	p.stderr = errpipe
+	p.stdout = outPipe
+	p.stderr = errPipe
 
 	return nil
 }

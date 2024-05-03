@@ -52,7 +52,7 @@ type proxyInfo struct {
 }
 
 func (d *deployer) LogBatch(ctx context.Context, batch *protos.LogEntryBatch) error {
-	pp := logging.NewJsonPrinter()
+	pp := logging.NewPrettyPrinter()
 	for _, entry := range batch.Entries {
 		if entry.Level == slog.LevelError.String() {
 			_, _ = fmt.Fprintln(os.Stderr, pp.Format(entry))
@@ -103,7 +103,7 @@ func newDeployer(ctx context.Context, deploymentId string, config *MultiConfig, 
 	if err != nil {
 		return nil, fmt.Errorf("error opening trace DB: %v", err)
 	}
-	pp := logging.NewJsonPrinter()
+	pp := logging.NewPrettyPrinter()
 	logger := slog.New(logging.NewLogHandler(func(entry *protos.LogEntry) {
 		_, _ = fmt.Fprintln(os.Stdout, pp.Format(entry))
 	}, logging.Options{
@@ -111,7 +111,7 @@ func newDeployer(ctx context.Context, deploymentId string, config *MultiConfig, 
 		Component: "deployer",
 		Akasalet:  gonanoid.Must(16),
 		Attrs:     nil,
-		Level:     config.App.LogLevel,
+		Level:     int32(slog.LevelDebug),
 	}))
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -281,9 +281,11 @@ func (d *deployer) startColocationGroup(g *group) error {
 		if err := d.registerReplica(g, e.AkasaletAddress(), pid); err != nil {
 			return err
 		}
+
 		if err := e.UpdateComponents(components); err != nil {
 			return err
 		}
+
 		g.envelopes = append(g.envelopes, e)
 	}
 

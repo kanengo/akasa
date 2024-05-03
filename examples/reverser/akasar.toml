@@ -1,5 +1,5 @@
 [serviceakasar]
-binary = "./reverser.exe"
+binary = "./reverser"
 rollout = "5m"
 
 [single]

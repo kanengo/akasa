@@ -104,10 +104,6 @@ func NewEnvelope(ctx context.Context, aletArgs *protos.AkasaletArgs, config *pro
 			Address:   "unix://" + myUds,
 		},
 	}
-	aletCtrlStub, err := getAkasaletControlStub(ctx, aletArgs.ControlSocket, options)
-	if err != nil {
-		return nil, err
-	}
 
 	e := &Envelope{
 		ctx:          ctx,
@@ -118,7 +114,7 @@ func NewEnvelope(ctx context.Context, aletArgs *protos.AkasaletArgs, config *pro
 		myUds:        myUds,
 		akasalet:     aletArgs,
 		config:       config,
-		akasaletCtrl: aletCtrlStub,
+		akasaletCtrl: nil,
 	}
 
 	child := options.Child
@@ -129,9 +125,17 @@ func NewEnvelope(ctx context.Context, aletArgs *protos.AkasaletArgs, config *pro
 		return nil, fmt.Errorf("NewEnvelope: %w", err)
 	}
 
+	aletCtrlStub, err := getAkasaletControlStub(ctx, aletArgs.ControlSocket, options)
+	if err != nil {
+		return nil, err
+	}
+	e.akasaletCtrl = aletCtrlStub
+
+	e.logger.Debug("envelope init akasalet start", "args", e.akasalet)
 	reply, err := aletCtrlStub.InitAkasalet(e.ctx, &protos.InitAkasaletRequest{
 		Sections: config.Sections,
 	})
+	e.logger.Debug("envelope init akasalet end", "reply", reply, "err", err)
 	if err != nil {
 		return nil, fmt.Errorf("NewEnvelope: %w", err)
 	}
@@ -148,6 +152,7 @@ func NewEnvelope(ctx context.Context, aletArgs *protos.AkasaletArgs, config *pro
 }
 
 func (e *Envelope) Serve(h Handler) error {
+	e.logger.Debug("envelope serve", "socket", e.myUds, "args", e.akasalet)
 	if e.tmpDirOwned {
 		defer func() {
 			_ = os.RemoveAll(e.tmpDir)

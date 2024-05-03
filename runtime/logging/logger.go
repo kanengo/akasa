@@ -159,7 +159,7 @@ func (h *LogHandler2) Handle(ctx context.Context, r slog.Record) error {
 }
 
 func StderrLogger(opts Options) *slog.Logger {
-	pp := NewJsonPrinter()
+	pp := NewPrettyPrinter()
 	writer := func(entry *protos.LogEntry) {
 		_, _ = fmt.Fprintln(os.Stderr, pp.Format(entry))
 	}

@@ -23,6 +23,6 @@ func TestJsonPrinter_Format(t *testing.T) {
 		Attrs:      []string{"id", "123123213", "name", "leeka\nhello"},
 	}
 
-	p := JsonPrinter{}
+	p := PrettyPrinter{}
 	fmt.Println(p.Format(e))
 }

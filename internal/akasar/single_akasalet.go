@@ -205,7 +205,7 @@ func (w singleLogWriter) Write(p []byte) (n int, err error) {
 }
 
 func (l *SingleAkasalet) logger(name string) *slog.Logger {
-	pp := logging.NewJsonPrinter()
+	pp := logging.NewPrettyPrinter()
 	logger := slog.New(logging.NewLogHandler(func(entry *protos.LogEntry) {
 		if l.quiet {
 			return

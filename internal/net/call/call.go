@@ -61,6 +61,7 @@ func (rc *reconnectionConnection) Call(ctx context.Context, key MethodKey, bytes
 	for r := retry.Begin(); r.Continue(ctx); {
 		res, err := rc.callOnce(ctx, key, bytes, opts)
 		if err != nil {
+			rc.opts.Logger.Error("callOnce", "err", err)
 			if errors.Is(err, Unreachable) || errors.Is(err, CommunicationError) {
 				continue
 			}
@@ -89,11 +90,7 @@ func (rc *reconnectionConnection) callOnce(ctx context.Context, key MethodKey, a
 	writeTraceContext(ctx, hdr[24:])
 
 	rpc := &call{
-		id:         0,
 		doneSignal: make(chan struct{}),
-		err:        nil,
-		response:   nil,
-		done:       0,
 	}
 
 	conn, nc, err := rc.startCall(ctx, rpc, opts)
@@ -133,6 +130,7 @@ func (rc *reconnectionConnection) callOnce(ctx context.Context, key MethodKey, a
 			return nil, ctx.Err()
 		}
 	} else {
+
 		<-rpc.doneSignal
 	}
 
@@ -327,7 +325,7 @@ func (c *clientConnection) unregister() {
 // manage 处理一个存活的连接直到missing
 // 新建连接时执行
 func (c *clientConnection) manage(ctx context.Context) {
-	if r := retry.Begin(); r.Continue(ctx) {
+	for r := retry.Begin(); r.Continue(ctx); {
 		if c.connectOnce(ctx) {
 			// 连接发生错误重连
 			r.Reset()

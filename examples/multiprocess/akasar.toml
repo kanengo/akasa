@@ -1,5 +1,6 @@
 [serviceakasar]
-binary = "./multiprocess.exe"
+name = "multiprocess"
+binary = "./multiprocess"
 #rollout = "5m"
 env = ["env=alpha"]
 LogLevel = "debug"

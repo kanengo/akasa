@@ -18,7 +18,7 @@ func (i ignoreWriter) Write(p []byte) (n int, err error) {
 }
 
 func TestSLogger(t *testing.T) {
-	pp := &JsonPrinter{}
+	pp := &PrettyPrinter{}
 	logger := slog.New(&LogHandler{
 		opts: Options{},
 		Write: func(entry *protos.LogEntry) {
@@ -50,7 +50,7 @@ func BenchmarkCompare(b *testing.B) {
 }
 
 func BenchmarkLogHandler(b *testing.B) {
-	pp := &JsonPrinter{}
+	pp := &PrettyPrinter{}
 	logger := slog.New(&LogHandler{
 		opts: Options{},
 		Write: func(entry *protos.LogEntry) {

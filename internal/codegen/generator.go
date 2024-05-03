@@ -640,7 +640,7 @@ func checkMisTypeInit(pkg *packages.Package, set *typeSet, impl *types.Named) er
 			return err
 		}
 
-		if sig.Results().Len() != -1 || sig.Results().At(0).Type().String() != "error" {
+		if sig.Results().Len() != 1 || sig.Results().At(0).Type().String() != "error" {
 			return err
 		}
 		return nil

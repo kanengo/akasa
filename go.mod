@@ -7,6 +7,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/matoous/go-nanoid/v2 v2.0.0
 	go.etcd.io/etcd/client/v3 v3.5.12
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.50.0
 	go.opentelemetry.io/otel v1.25.0
 	go.opentelemetry.io/otel/sdk v1.25.0
 	go.opentelemetry.io/otel/trace v1.25.0
@@ -33,7 +34,6 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	go.etcd.io/etcd/api/v3 v3.5.12 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.12 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.50.0 // indirect
 	go.opentelemetry.io/otel/metric v1.25.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect

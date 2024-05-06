@@ -3,15 +3,13 @@ package akasar
 import (
 	"context"
 	"fmt"
+	"github.com/kanengo/akasar/internal/config"
+	"golang.org/x/exp/maps"
 	"log/slog"
 	"net"
 	"os"
 	"reflect"
 	"sync"
-
-	"github.com/kanengo/akasar/internal/config"
-
-	"golang.org/x/exp/maps"
 
 	"github.com/kanengo/akasar/runtime/version"
 
@@ -169,7 +167,9 @@ func NewRemoteAkasaLet(ctx context.Context, regs []*codegen.Registration, bootst
 
 	// 初始化component
 	for _, reg := range regs {
-		c := &component{}
+		c := &component{
+			reg: reg,
+		}
 		a.componentsByName[reg.Name] = c
 		a.componentsByIntf[reg.Iface] = c
 		a.componentsByImpl[reg.Impl] = c
@@ -200,12 +200,6 @@ func NewRemoteAkasaLet(ctx context.Context, regs []*codegen.Registration, bootst
 	}
 	close(a.deployerReady)
 
-	// log writing.
-	servers.Go(func() error {
-		a.logDst.run(ctx, a.deployer.LogBatch)
-		return nil
-	})
-
 	// Serve the akasalet control component.
 	servers.Go(func() error {
 		return deployers.ServeComponents(ctx, controlSocket, a.sysLogger, map[string]any{
@@ -216,9 +210,16 @@ func NewRemoteAkasaLet(ctx context.Context, regs []*codegen.Registration, bootst
 	// 等待初始化握手完成.
 	select {
 	case <-ctx.Done():
+		return nil, ctx.Err()
 	case <-a.initDone:
 		// ready to serve
 	}
+
+	// log writing.
+	servers.Go(func() error {
+		a.logDst.run(ctx, a.deployer.LogBatch)
+		return nil
+	})
 
 	cleanupListener = false //
 	// Serve RPC request from other akasalet
@@ -288,7 +289,7 @@ func (a *RemoteAkasaLet) UpdateComponents(ctx context.Context, req *protos.Updat
 		}
 		components = append(components, c)
 	}
-
+	a.sysLogger.Debug("===UpdateComponents", "req", req.Components, "components", shortened)
 	for i, c := range components {
 		go func() {
 			a.sysLogger.Debug("Updating", "component", shortened[i])
@@ -430,6 +431,7 @@ func (a *RemoteAkasaLet) getIntf(t reflect.Type, requester string) (any, error) 
 		return nil, c.activateErr
 	}
 
+	a.sysLogger.Debug("===getIntf====before", "component", logging.ShortenComponent(c.reg.Name))
 	// 本地组件
 	if c.local.Read() {
 		impl, err := a.GetImpl(c.reg.Impl)
@@ -438,11 +440,13 @@ func (a *RemoteAkasaLet) getIntf(t reflect.Type, requester string) (any, error) 
 		}
 		return c.reg.LocalStubFn(impl, requester, a.tracer), nil
 	}
+	a.sysLogger.Debug("===getIntf====mid", "component", logging.ShortenComponent(c.reg.Name))
 
 	stub, err := a.getStub(c)
 	if err != nil {
 		return nil, err
 	}
+	a.sysLogger.Debug("===getIntf====after", "component", logging.ShortenComponent(c.reg.Name))
 
 	return c.reg.ClientStubFn(stub, requester, a.tracer), nil
 }
@@ -484,16 +488,17 @@ func (a *RemoteAkasaLet) redirect(requester string, c *component, target, addres
 }
 
 func (a *RemoteAkasaLet) getStub(c *component) (codegen.Stub, error) {
+	a.sysLogger.Debug("getStub before", "component", c.reg.Name)
 	c.stubInit.Do(func() {
 		c.stub, c.stubErr = a.makeStub(c.reg.Name, c.reg, c.resolver, c.balance, true)
 	})
-
+	a.sysLogger.Debug("getStub after", "component", c.reg.Name)
 	return c.stub, c.stubErr
 }
 
 func (a *RemoteAkasaLet) makeStub(fullName string, reg *codegen.Registration, resolver call.Resolver, balancer call.Balancer, wait bool) (codegen.Stub, error) {
 	name := logging.ShortenComponent(fullName)
-	a.sysLogger.Debug("Connection to remote", "component", name)
+	a.sysLogger.Debug("makeStub", "component", name)
 	opts := call.ClientOptions{
 		Balancer: balancer,
 		Logger:   a.sysLogger,
@@ -503,7 +508,6 @@ func (a *RemoteAkasaLet) makeStub(fullName string, reg *codegen.Registration, re
 		a.sysLogger.Error("Failed to connect to remote", "component", name, "err", err)
 		return nil, err
 	}
-	a.sysLogger.Debug("Connected to remote", "component", name)
 	return call.NewStub(fullName, reg, conn, a.opts.InjectRetries), nil
 }
 

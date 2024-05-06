@@ -1460,8 +1460,8 @@ func (g *generator) generateClientStubs(p printFn) {
 			p(`	// Call the remote method.`)
 			data := "nil"
 			if sig.Params().Len() > 1 {
-				p(`	data := enc.Data()`)
-				p(`	requestBytes = len(data)`)
+				data = "enc.Data()"
+				p(`	requestBytes = len(enc.Data())`)
 			}
 			p(`	var results []byte`)
 			p(`	results, err = s.stub.Invoke(ctx, %d, %s, shardKey)`, methodIndex[m.Name()], data)

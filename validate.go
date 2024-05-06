@@ -43,7 +43,7 @@ func validateRegistrations(regs []*codegen.Registration) error {
 					name = tag
 				}
 				if !slices.Contains(reg.Listeners, name) {
-					err := fmt.Errorf("component implementation struct %v has a listener field %v, but listener %v hasn't been registered; maybe you forgot to run 'weaver generate'", reg.Impl, name, name)
+					err := fmt.Errorf("component implementation struct %v has a listener field %v, but listener %v hasn't been registered; maybe you forgot to run 'akasar generate'", reg.Impl, name, name)
 					errs = append(errs, err)
 				}
 			}

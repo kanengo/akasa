@@ -24,8 +24,8 @@ func (e deserializerError) Error() string {
 	return "deserializer:" + e.err.Error()
 }
 
-func makeDeserializerError(format string, args ...interface{}) serializerError {
-	return serializerError{err: fmt.Errorf(format, args...)}
+func makeDeserializerError(format string, args ...interface{}) deserializerError {
+	return deserializerError{err: fmt.Errorf(format, args...)}
 }
 
 type Deserializer struct {
@@ -39,7 +39,7 @@ func NewDeserializer(buf []byte) *Deserializer {
 
 func (d *Deserializer) check(n int) {
 	if len(d.buf[d.index:]) < n {
-		panic(makeDeserializerError("deserializer: not enough space to deserialize"))
+		panic(makeDeserializerError("not enough space to deserialize need :%d now: %d", n, len(d.buf[d.index:])))
 	}
 }
 

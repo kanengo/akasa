@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/kanengo/akasar/internal/errgroup"
 
@@ -125,20 +126,30 @@ func NewEnvelope(ctx context.Context, aletArgs *protos.AkasaletArgs, config *pro
 		return nil, fmt.Errorf("NewEnvelope: %w", err)
 	}
 
+	timer := time.NewTimer(250 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
 	aletCtrlStub, err := getAkasaletControlStub(ctx, aletArgs.ControlSocket, options)
 	if err != nil {
 		return nil, err
 	}
 	e.akasaletCtrl = aletCtrlStub
 
-	e.logger.Debug("envelope init akasalet start", "args", e.akasalet)
+	//e.logger.Debug("envelope init akasalet start", "args", e.akasalet)
 	reply, err := aletCtrlStub.InitAkasalet(e.ctx, &protos.InitAkasaletRequest{
 		Sections: config.Sections,
 	})
-	e.logger.Debug("envelope init akasalet end", "reply", reply, "err", err)
 	if err != nil {
+		e.logger.Error("envelop init akasar", "err", err)
 		return nil, fmt.Errorf("NewEnvelope: %w", err)
 	}
+	//e.logger.Debug("envelope init akasalet", "dialAddr", reply.DialAddr, "version", reply.Version)
+	e.logger.Debug("envelope init akasalet", slog.Any("reply", reply))
 	if err := verifyAkasaletInfo(reply); err != nil {
 		return nil, err
 	}

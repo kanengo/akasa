@@ -441,10 +441,9 @@ func (s akasaletControlClientStub) GetHealth(ctx context.Context, a0 *protos.Get
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 0, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 0, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -493,10 +492,9 @@ func (s akasaletControlClientStub) GetLoad(ctx context.Context, a0 *protos.GetLo
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 1, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 1, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -545,10 +543,9 @@ func (s akasaletControlClientStub) GetMetrics(ctx context.Context, a0 *protos.Ge
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 2, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 2, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -597,10 +594,9 @@ func (s akasaletControlClientStub) GetProfile(ctx context.Context, a0 *protos.Ge
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 3, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 3, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -649,10 +645,9 @@ func (s akasaletControlClientStub) InitAkasalet(ctx context.Context, a0 *protos.
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 4, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 4, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -701,10 +696,9 @@ func (s akasaletControlClientStub) UpdateComponents(ctx context.Context, a0 *pro
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 5, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 5, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -753,10 +747,9 @@ func (s akasaletControlClientStub) UpdateRoutingInfo(ctx context.Context, a0 *pr
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 6, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 6, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -818,10 +811,9 @@ func (s deployerControlClientStub) ActivateComponent(ctx context.Context, a0 *pr
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 0, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 0, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -870,10 +862,9 @@ func (s deployerControlClientStub) ExportListener(ctx context.Context, a0 *proto
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 1, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 1, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -922,10 +913,9 @@ func (s deployerControlClientStub) GetListenerAddress(ctx context.Context, a0 *p
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 2, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 2, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -974,10 +964,9 @@ func (s deployerControlClientStub) HandlerTraceSpans(ctx context.Context, a0 *pr
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 3, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 3, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)
@@ -1025,10 +1014,9 @@ func (s deployerControlClientStub) LogBatch(ctx context.Context, a0 *protos.LogE
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 4, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 4, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(RemoteCallError, err)

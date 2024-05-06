@@ -61,10 +61,10 @@ func (rc *reconnectionConnection) Call(ctx context.Context, key MethodKey, bytes
 	for r := retry.Begin(); r.Continue(ctx); {
 		res, err := rc.callOnce(ctx, key, bytes, opts)
 		if err != nil {
-			rc.opts.Logger.Error("callOnce", "err", err)
 			if errors.Is(err, Unreachable) || errors.Is(err, CommunicationError) {
 				continue
 			}
+			rc.opts.Logger.Error("callOnce", "err", err)
 		}
 		return res, err
 	}
@@ -122,7 +122,7 @@ func (rc *reconnectionConnection) callOnce(ctx context.Context, key MethodKey, a
 			// Canceled or deadline expired.
 			conn.endCall(rpc)
 			if !haveDeadline || time.Now().Before(deadline) {
-				//未超时就已经被取消,通过服务器
+				//未超时就已经被取消,通知服务器
 				if err := writeMessage(nc, &conn.wLock, cancelMessage, rpc.id, nil, nil, rc.opts.WriteFlattenLimit); err != nil {
 					conn.shutdown("client send cancel", err)
 				}
@@ -130,9 +130,10 @@ func (rc *reconnectionConnection) callOnce(ctx context.Context, key MethodKey, a
 			return nil, ctx.Err()
 		}
 	} else {
-
 		<-rpc.doneSignal
 	}
+
+	//rc.opts.Logger.Debug("rpc.response", "res", rpc.response, "err", rpc.err)
 
 	return rpc.response, rpc.err
 }
@@ -456,11 +457,12 @@ func (c *clientConnection) connectOnce(ctx context.Context) bool {
 	}
 	c.checked()
 
-	if c.state == idle || c.state == active || c.state == draining {
+	for c.state == idle || c.state == active || c.state == draining {
 		if err := c.readAndProcessMessage(); err != nil {
 			c.fail("client read", err)
 		}
 	}
+
 	return true
 }
 
@@ -826,7 +828,7 @@ func (c *serverConnection) runHandler(hmap *HandlerMap, id uint64, msg []byte) {
 		result, err = fn(ctx, payload)
 	}
 
-	mt := requestMessage
+	mt := responseMessage
 	if err != nil {
 		mt = responseError
 		result = encodeError(err)

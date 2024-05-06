@@ -58,7 +58,7 @@ func (p *PrettyPrinter) Format(entry *protos.LogEntry) string {
 
 	// node
 	p.appendKey(nodeKey)
-	p.appendString(entry.Node)
+	p.appendString(Shorten(entry.Node))
 
 	// file and line
 	if entry.File != "" && entry.Line != -1 {
@@ -98,6 +98,16 @@ func (p *PrettyPrinter) appendString(str string) {
 
 func (p *PrettyPrinter) appendTime(t time.Time) {
 	p.appendString(t.Format("2006-01-02 15:04:05.000000"))
+}
+
+// Shorten 返回一个s的短前缀
+func Shorten(s string) string {
+	const n = 8
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n])
 }
 
 func ShortenComponent(component string) string {

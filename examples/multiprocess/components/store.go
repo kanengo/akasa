@@ -15,6 +15,6 @@ type store struct {
 }
 
 func (s store) BuyGoods(ctx context.Context, userId int64, goodsId int32) error {
-	//TODO implement me
-	panic("implement me")
+	s.Logger(ctx).Info("buyGoods", "userId", userId, "goodsId", goodsId)
+	return nil
 }

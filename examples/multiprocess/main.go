@@ -20,13 +20,20 @@ func main() {
 		t.Logger(ctx).Info("app start")
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-
+		for {
+			select {
+			case <-ctx.Done():
+				t.Logger(ctx).Debug("app end ctx done")
+				return nil
+			case <-ticker.C:
+				user, err := t.user.Get().Login(ctx, "leeka", "123456")
+				if err != nil {
+					return err
+				}
+				t.Logger(ctx).Info("login success", "userId", user.Id, "vip", user.VipInfo.VipLevel)
+				_ = t.store.Get().BuyGoods(ctx, user.Id, 10001)
+			}
 		}
-		return nil
 	})
 	if err != nil {
 		fmt.Println(err)

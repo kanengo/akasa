@@ -6,6 +6,7 @@ package components
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/kanengo/akasar"
 	"github.com/kanengo/akasar/runtime/codegen"
 	"go.opentelemetry.io/otel/codes"
@@ -109,7 +110,7 @@ type userLocalStub struct {
 // Check that userLocalStub implements the User interface
 var _ User = (*userLocalStub)(nil)
 
-func (s userLocalStub) Login(ctx context.Context, a0 string, a1 string) (err error) {
+func (s userLocalStub) Login(ctx context.Context, a0 string, a1 string) (r0 UserInfo, err error) {
 	// Update metrics.
 	begin := s.loginMetrics.Begin()
 	defer func() { s.loginMetrics.End(begin, err != nil, 0, 0) }()
@@ -131,7 +132,7 @@ func (s userLocalStub) Login(ctx context.Context, a0 string, a1 string) (err err
 		}
 	}()
 
-	err = s.impl.Login(ctx, a0, a1)
+	r0, err = s.impl.Login(ctx, a0, a1)
 	return
 }
 
@@ -144,7 +145,7 @@ type vIPLocalStub struct {
 // Check that vIPLocalStub implements the VIP interface
 var _ VIP = (*vIPLocalStub)(nil)
 
-func (s vIPLocalStub) GetVipInfo(ctx context.Context, a0 int64) (err error) {
+func (s vIPLocalStub) GetVipInfo(ctx context.Context, a0 int64) (r0 *VipInfo, err error) {
 	// Update metrics.
 	begin := s.getVipInfoMetrics.Begin()
 	defer func() { s.getVipInfoMetrics.End(begin, err != nil, 0, 0) }()
@@ -166,7 +167,7 @@ func (s vIPLocalStub) GetVipInfo(ctx context.Context, a0 int64) (err error) {
 		}
 	}()
 
-	err = s.impl.GetVipInfo(ctx, a0)
+	r0, err = s.impl.GetVipInfo(ctx, a0)
 	return
 }
 
@@ -221,10 +222,9 @@ func (s storeClientStub) BuyGoods(ctx context.Context, a0 int64, a1 int32) (err 
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 0, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 0, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(akasar.RemoteCallError, err)
@@ -247,7 +247,7 @@ type userClientStub struct {
 // Check that userClientStub implements the User interface
 var _ User = (*userClientStub)(nil)
 
-func (s userClientStub) Login(ctx context.Context, a0 string, a1 string) (err error) {
+func (s userClientStub) Login(ctx context.Context, a0 string, a1 string) (r0 UserInfo, err error) {
 	// Update metrics.
 	var requestBytes, replyBytes int
 	begin := s.loginMetrics.Begin()
@@ -287,10 +287,9 @@ func (s userClientStub) Login(ctx context.Context, a0 string, a1 string) (err er
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 0, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 0, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(akasar.RemoteCallError, err)
@@ -299,6 +298,7 @@ func (s userClientStub) Login(ctx context.Context, a0 string, a1 string) (err er
 
 	// Decode the results.
 	dec := codegen.NewDeserializer(results)
+	(&r0).AkasarUnmarshal(dec)
 	err = dec.Error()
 
 	return
@@ -313,7 +313,7 @@ type vIPClientStub struct {
 // Check that vIPClientStub implements the VIP interface
 var _ VIP = (*vIPClientStub)(nil)
 
-func (s vIPClientStub) GetVipInfo(ctx context.Context, a0 int64) (err error) {
+func (s vIPClientStub) GetVipInfo(ctx context.Context, a0 int64) (r0 *VipInfo, err error) {
 	// Update metrics.
 	var requestBytes, replyBytes int
 	begin := s.getVipInfoMetrics.Begin()
@@ -351,10 +351,9 @@ func (s vIPClientStub) GetVipInfo(ctx context.Context, a0 int64) (err error) {
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 0, nil, shardKey)
+	results, err = s.stub.Invoke(ctx, 0, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(akasar.RemoteCallError, err)
@@ -363,6 +362,7 @@ func (s vIPClientStub) GetVipInfo(ctx context.Context, a0 int64) (err error) {
 
 	// Decode the results.
 	dec := codegen.NewDeserializer(results)
+	r0 = serviceAkasarDec_ptr_VipInfo_97ed7ebb(dec)
 	err = dec.Error()
 
 	return
@@ -440,10 +440,11 @@ func (s *userServerStub) login(ctx context.Context, args []byte) (res []byte, er
 	var a1 string
 	a1 = dec.String()
 
-	appErr := s.impl.Login(ctx, a0, a1)
+	r0, appErr := s.impl.Login(ctx, a0, a1)
 
 	//Encode the results.
 	enc := codegen.NewSerializer()
+	(r0).AkasarMarshal(enc)
 	enc.Error(appErr)
 	return enc.Data(), nil
 }
@@ -477,10 +478,89 @@ func (s *vIPServerStub) getVipInfo(ctx context.Context, args []byte) (res []byte
 	var a0 int64
 	a0 = dec.Int64()
 
-	appErr := s.impl.GetVipInfo(ctx, a0)
+	r0, appErr := s.impl.GetVipInfo(ctx, a0)
 
 	//Encode the results.
 	enc := codegen.NewSerializer()
+	serviceAkasarEnc_ptr_VipInfo_97ed7ebb(enc, r0)
 	enc.Error(appErr)
 	return enc.Data(), nil
+}
+
+// AutoMarshal implementations.
+
+var _ codegen.AutoMarshal = (*UserInfo)(nil)
+
+type __is_UserInfo[T ~struct {
+	akasar.AutoMarshal
+	Id       int64
+	Name     string
+	CreateAt int64
+	VipInfo  *VipInfo
+}] struct{}
+
+var _ __is_UserInfo[UserInfo]
+
+func (x *UserInfo) AkasarMarshal(enc *codegen.Serializer) {
+	if x == nil {
+		panic(fmt.Errorf("UserInfo.AkasarMarshal: nil receiver"))
+	}
+	enc.Int64(x.Id)
+	enc.String(x.Name)
+	enc.Int64(x.CreateAt)
+	serviceAkasarEnc_ptr_VipInfo_97ed7ebb(enc, x.VipInfo)
+}
+
+func (x *UserInfo) AkasarUnmarshal(dec *codegen.Deserializer) {
+	if x == nil {
+		panic(fmt.Errorf("UserInfo.AkasarUnmarshal: nil receiver"))
+	}
+	x.Id = dec.Int64()
+	x.Name = dec.String()
+	x.CreateAt = dec.Int64()
+	x.VipInfo = serviceAkasarDec_ptr_VipInfo_97ed7ebb(dec)
+}
+
+func serviceAkasarEnc_ptr_VipInfo_97ed7ebb(enc *codegen.Serializer, arg *VipInfo) {
+	if arg == nil {
+		enc.Bool(false)
+	} else {
+		enc.Bool(true)
+		(*arg).AkasarMarshal(enc)
+	}
+}
+
+func serviceAkasarDec_ptr_VipInfo_97ed7ebb(dec *codegen.Deserializer) *VipInfo {
+	if !dec.Bool() {
+		return nil
+	}
+	var res VipInfo
+	(&res).AkasarUnmarshal(dec)
+	return &res
+}
+
+var _ codegen.AutoMarshal = (*VipInfo)(nil)
+
+type __is_VipInfo[T ~struct {
+	akasar.AutoMarshal
+	VipLevel VipLevelType
+	ExpireAt int64
+}] struct{}
+
+var _ __is_VipInfo[VipInfo]
+
+func (x *VipInfo) AkasarMarshal(enc *codegen.Serializer) {
+	if x == nil {
+		panic(fmt.Errorf("VipInfo.AkasarMarshal: nil receiver"))
+	}
+	enc.Int32((int32)(x.VipLevel))
+	enc.Int64(x.ExpireAt)
+}
+
+func (x *VipInfo) AkasarUnmarshal(dec *codegen.Deserializer) {
+	if x == nil {
+		panic(fmt.Errorf("VipInfo.AkasarUnmarshal: nil receiver"))
+	}
+	*(*int32)(&x.VipLevel) = dec.Int32()
+	x.ExpireAt = dec.Int64()
 }

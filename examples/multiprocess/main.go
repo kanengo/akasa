@@ -31,7 +31,11 @@ func main() {
 					return err
 				}
 				t.Logger(ctx).Info("login success", "userId", user.Id, "vip", user.VipInfo.VipLevel)
-				_ = t.store.Get().BuyGoods(ctx, user.Id, 10001)
+				_ = t.store.Get().BuyGoods(ctx, components.BuyGoodsRequest{
+					UserId:  user.Id,
+					GoodsId: 10001,
+					BuyNum:  1,
+				})
 			}
 		}
 	})

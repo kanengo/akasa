@@ -3,6 +3,7 @@ package call
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/kanengo/akasar/internal/pool"
 	"io"
 	"net"
 	"sync"
@@ -95,10 +96,20 @@ func writeFlat(w io.Writer, wlLck *sync.Mutex, mt messageType, id uint64, extraH
 	return err
 }
 
+const headerSize = 16
+
+var headerBytesPool = &sync.Pool{New: func() any {
+	var hdr [headerSize]byte
+	return &hdr
+}}
+
 func readMessage(r io.Reader) (messageType, uint64, []byte, error) {
 	// Read the header.
-	const headerSize = 16
-	var hdr [headerSize]byte
+
+	hdr := headerBytesPool.Get().(*[headerSize]byte)
+	defer func() {
+		headerBytesPool.Put(hdr)
+	}()
 
 	if _, err := io.ReadFull(r, hdr[:]); err != nil {
 		return 0, 0, nil, err
@@ -115,7 +126,11 @@ func readMessage(r io.Reader) (messageType, uint64, []byte, error) {
 	}
 
 	// Read the payload
-	msg := make([]byte, int(dataLen))
+	bs, err := pool.GetPowerOfTwoSizeBytes(int(dataLen))
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	msg := (*bs)[:int(dataLen)]
 	if _, err := io.ReadFull(r, msg); err != nil {
 		return 0, 0, nil, err
 	}

@@ -289,7 +289,7 @@ func (a *RemoteAkasaLet) UpdateComponents(ctx context.Context, req *protos.Updat
 		}
 		components = append(components, c)
 	}
-	a.sysLogger.Debug("===UpdateComponents", "req", req.Components, "components", shortened)
+
 	for i, c := range components {
 		go func() {
 			a.sysLogger.Debug("Updating", "component", shortened[i])
@@ -431,7 +431,6 @@ func (a *RemoteAkasaLet) getIntf(t reflect.Type, requester string) (any, error) 
 		return nil, c.activateErr
 	}
 
-	a.sysLogger.Debug("===getIntf====before", "component", logging.ShortenComponent(c.reg.Name))
 	// 本地组件
 	if c.local.Read() {
 		impl, err := a.GetImpl(c.reg.Impl)
@@ -440,13 +439,11 @@ func (a *RemoteAkasaLet) getIntf(t reflect.Type, requester string) (any, error) 
 		}
 		return c.reg.LocalStubFn(impl, requester, a.tracer), nil
 	}
-	a.sysLogger.Debug("===getIntf====mid", "component", logging.ShortenComponent(c.reg.Name))
 
 	stub, err := a.getStub(c)
 	if err != nil {
 		return nil, err
 	}
-	a.sysLogger.Debug("===getIntf====after", "component", logging.ShortenComponent(c.reg.Name))
 
 	return c.reg.ClientStubFn(stub, requester, a.tracer), nil
 }

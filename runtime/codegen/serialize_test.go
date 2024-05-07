@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"github.com/kanengo/akasar/internal/pool"
 	"testing"
 )
 
@@ -26,34 +27,35 @@ func TestSerializer(t *testing.T) {
 	size := 8 + 1 + 2 + 4 + 8 + 4 + len(s) + 4 + 8 + 1 + 4 + 4 + 7
 
 	sere := NewSerializer(size)
-	fmt.Printf("buf cap:%d len:%d\n", cap(sere.buf), len(sere.buf))
+	fmt.Printf("buf cap:%d len:%d\n", cap(*sere.buf), len(*sere.buf))
 
 	sere.Int(a)
-	fmt.Printf("buf len:%d\n", len(sere.buf))
+	fmt.Printf("buf len:%d\n", len(*sere.buf))
 	sere.Int8(b)
-	fmt.Printf("buf len:%d\n", len(sere.buf))
+	fmt.Printf("buf len:%d\n", len(*sere.buf))
 	sere.Int16(c)
-	fmt.Printf("buf len:%d\n", len(sere.buf))
+	fmt.Printf("buf len:%d\n", len(*sere.buf))
 	sere.Int32(d)
-	fmt.Printf("buf len:%d\n", len(sere.buf))
+	fmt.Printf("buf len:%d\n", len(*sere.buf))
 	sere.Int64(e)
-	fmt.Printf("buf len:%d\n", len(sere.buf))
+	fmt.Printf("buf len:%d\n", len(*sere.buf))
 	sere.String(s)
-	fmt.Printf("buf len:%d\n", len(sere.buf))
+	fmt.Printf("buf len:%d\n", len(*sere.buf))
 	sere.Float32(f1)
-	fmt.Printf("buf len:%d\n", len(sere.buf))
+	fmt.Printf("buf len:%d\n", len(*sere.buf))
 	sere.Float64(f2)
-	fmt.Printf("buf len:%d\n", len(sere.buf))
+	fmt.Printf("buf len:%d\n", len(*sere.buf))
 	sere.Bool(bl)
-	fmt.Printf("buf len:%d\n", len(sere.buf))
+	fmt.Printf("buf len:%d\n", len(*sere.buf))
 	sere.Bytes(bn)
-	fmt.Printf("bytes nil buf len:%d\n", len(sere.buf))
+	fmt.Printf("bytes nil buf len:%d\n", len(*sere.buf))
 	sere.Bytes(bs)
-	fmt.Printf("buf len:%d\n", len(sere.buf))
+	fmt.Printf("buf len:%d\n", len(*sere.buf))
+	_ = pool.FreePowerOfTwoSizeBytes(sere.Data())
 
 	fmt.Println("==========================deserializer============================")
 
-	dese := NewDeserializer(sere.buf)
+	dese := NewDeserializer(*sere.buf)
 
 	fmt.Printf("deserialize data:%v\n", dese.Int())
 	fmt.Printf("deserialize data:%v\n", dese.Int8())

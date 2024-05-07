@@ -39,7 +39,7 @@ func (rl *remoteLogger) run(ctx context.Context, logBatch func(context.Context, 
 		case entry := <-rl.c:
 			batch.Entries = append(batch.Entries, entry)
 		readLoop:
-			//若接收到新日志，则继续尝试接收，直到没有新日志再执2行日志操作
+			//若接收到新日志，则继续尝试接收，直到没有新日志再执行批量日志操作
 			for {
 				select {
 				case <-ctx.Done():

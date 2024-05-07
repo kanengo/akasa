@@ -2,6 +2,7 @@ package call
 
 import (
 	"context"
+	"github.com/kanengo/akasar/internal/pool"
 	"github.com/kanengo/akasar/runtime/codegen"
 )
 
@@ -22,6 +23,10 @@ func (s *stub) Invoke(ctx context.Context, method int, args []byte, shardKey uin
 	if m.retry {
 		n += s.injectRetries // fake retries for testing
 	}
+
+	defer func() {
+		_ = pool.FreePowerOfTwoSizeBytes(args)
+	}()
 
 	for i := 0; i < n; i++ {
 		result, err = s.conn.Call(ctx, m.key, args, opts)

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/kanengo/akasar/internal/pool"
 	"io"
 	"log/slog"
 	"net"
@@ -517,6 +518,9 @@ func (c *clientConnection) exchangeVersions() error {
 		return err
 	}
 	mt, id, msg, err := readMessage(buf)
+	defer func() {
+		_ = pool.FreePowerOfTwoSizeBytes(msg)
+	}()
 	if err != nil {
 		return err
 	}
@@ -545,6 +549,11 @@ func (c *clientConnection) readAndProcessMessage() error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if mt != responseMessage {
+			_ = pool.FreePowerOfTwoSizeBytes(msg)
+		}
+	}()
 
 	switch mt {
 	case versionMessage:
@@ -829,6 +838,12 @@ func (c *serverConnection) runHandler(hmap *HandlerMap, id uint64, msg []byte) {
 	}
 
 	mt := responseMessage
+	defer func() {
+		if result != nil {
+			_ = pool.FreePowerOfTwoSizeBytes(result)
+			_ = pool.FreePowerOfTwoSizeBytes(msg)
+		}
+	}()
 	if err != nil {
 		mt = responseError
 		result = encodeError(err)

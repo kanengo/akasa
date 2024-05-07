@@ -7,14 +7,23 @@ import (
 )
 
 type Store interface {
-	BuyGoods(ctx context.Context, userId int64, goodsId int32) error
+	BuyGoods(ctx context.Context, req BuyGoodsRequest) error
 }
 
 type store struct {
 	akasar.Components[Store]
 }
 
-func (s store) BuyGoods(ctx context.Context, userId int64, goodsId int32) error {
-	s.Logger(ctx).Info("buyGoods", "userId", userId, "goodsId", goodsId)
+var _ Store = (*store)(nil)
+
+type BuyGoodsRequest struct {
+	UserId  int64
+	GoodsId int32
+	BuyNum  uint32
+	akasar.AutoMarshal
+}
+
+func (s store) BuyGoods(ctx context.Context, req BuyGoodsRequest) error {
+	s.Logger(ctx).Info("buyGoods", "userId", req.UserId, "goodsId", req.GoodsId)
 	return nil
 }

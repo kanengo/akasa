@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/kanengo/akasar"
+	"github.com/kanengo/akasar/internal/pool"
 	"github.com/kanengo/akasar/runtime/codegen"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -75,7 +76,7 @@ type storeLocalStub struct {
 // Check that storeLocalStub implements the Store interface
 var _ Store = (*storeLocalStub)(nil)
 
-func (s storeLocalStub) BuyGoods(ctx context.Context, a0 int64, a1 int32) (err error) {
+func (s storeLocalStub) BuyGoods(ctx context.Context, a0 BuyGoodsRequest) (err error) {
 	// Update metrics.
 	begin := s.buyGoodsMetrics.Begin()
 	defer func() { s.buyGoodsMetrics.End(begin, err != nil, 0, 0) }()
@@ -97,7 +98,7 @@ func (s storeLocalStub) BuyGoods(ctx context.Context, a0 int64, a1 int32) (err e
 		}
 	}()
 
-	err = s.impl.BuyGoods(ctx, a0, a1)
+	err = s.impl.BuyGoods(ctx, a0)
 	return
 }
 
@@ -182,7 +183,7 @@ type storeClientStub struct {
 // Check that storeClientStub implements the Store interface
 var _ Store = (*storeClientStub)(nil)
 
-func (s storeClientStub) BuyGoods(ctx context.Context, a0 int64, a1 int32) (err error) {
+func (s storeClientStub) BuyGoods(ctx context.Context, a0 BuyGoodsRequest) (err error) {
 	// Update metrics.
 	var requestBytes, replyBytes int
 	begin := s.buyGoodsMetrics.Begin()
@@ -212,18 +213,19 @@ func (s storeClientStub) BuyGoods(ctx context.Context, a0 int64, a1 int32) (err 
 
 	// Preallocate a buffer of the right size.
 	size := 0
-	size += 8
-	size += 4
+	size += serviceAkasarSize_BuyGoodsRequest_e481b0d8(&a0)
 	enc := codegen.NewSerializer(size)
 
 	// Encode arguments.
-	enc.Int64(a0)
-	enc.Int32(a1)
+	(a0).AkasarMarshal(enc)
 	var shardKey uint64
 
 	// Call the remote method.
 	requestBytes = len(enc.Data())
 	var results []byte
+	defer func() {
+		pool.FreePowerOfTwoSizeBytes(results)
+	}()
 	results, err = s.stub.Invoke(ctx, 0, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
@@ -289,6 +291,9 @@ func (s userClientStub) Login(ctx context.Context, a0 string, a1 string) (r0 Use
 	// Call the remote method.
 	requestBytes = len(enc.Data())
 	var results []byte
+	defer func() {
+		pool.FreePowerOfTwoSizeBytes(results)
+	}()
 	results, err = s.stub.Invoke(ctx, 0, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
@@ -353,6 +358,9 @@ func (s vIPClientStub) GetVipInfo(ctx context.Context, a0 int64) (r0 *VipInfo, e
 	// Call the remote method.
 	requestBytes = len(enc.Data())
 	var results []byte
+	defer func() {
+		pool.FreePowerOfTwoSizeBytes(results)
+	}()
 	results, err = s.stub.Invoke(ctx, 0, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
@@ -396,16 +404,15 @@ func (s *storeServerStub) buyGoods(ctx context.Context, args []byte) (res []byte
 
 	// Encode arguments.
 	dec := codegen.NewDeserializer(args)
-	var a0 int64
-	a0 = dec.Int64()
-	var a1 int32
-	a1 = dec.Int32()
+	var a0 BuyGoodsRequest
+	(&a0).AkasarUnmarshal(dec)
 
-	appErr := s.impl.BuyGoods(ctx, a0, a1)
+	appErr := s.impl.BuyGoods(ctx, a0)
 
 	//Encode the results.
 	enc := codegen.NewSerializer()
 	enc.Error(appErr)
+
 	return enc.Data(), nil
 }
 
@@ -443,9 +450,14 @@ func (s *userServerStub) login(ctx context.Context, args []byte) (res []byte, er
 	r0, appErr := s.impl.Login(ctx, a0, a1)
 
 	//Encode the results.
-	enc := codegen.NewSerializer()
+
+	// Preallocate a buffer of the right size.
+	size := 0
+	size += serviceAkasarSize_UserInfo_cf942c01(&r0)
+	enc := codegen.NewSerializer(size)
 	(r0).AkasarMarshal(enc)
 	enc.Error(appErr)
+
 	return enc.Data(), nil
 }
 
@@ -481,13 +493,47 @@ func (s *vIPServerStub) getVipInfo(ctx context.Context, args []byte) (res []byte
 	r0, appErr := s.impl.GetVipInfo(ctx, a0)
 
 	//Encode the results.
-	enc := codegen.NewSerializer()
+
+	// Preallocate a buffer of the right size.
+	size := 0
+	size += serviceAkasarSize_ptr_VipInfo_97ed7ebb(r0)
+	enc := codegen.NewSerializer(size)
 	serviceAkasarEnc_ptr_VipInfo_97ed7ebb(enc, r0)
 	enc.Error(appErr)
+
 	return enc.Data(), nil
 }
 
 // AutoMarshal implementations.
+
+var _ codegen.AutoMarshal = (*BuyGoodsRequest)(nil)
+
+type __is_BuyGoodsRequest[T ~struct {
+	UserId  int64
+	GoodsId int32
+	BuyNum  uint32
+	akasar.AutoMarshal
+}] struct{}
+
+var _ __is_BuyGoodsRequest[BuyGoodsRequest]
+
+func (x *BuyGoodsRequest) AkasarMarshal(enc *codegen.Serializer) {
+	if x == nil {
+		panic(fmt.Errorf("BuyGoodsRequest.AkasarMarshal: nil receiver"))
+	}
+	enc.Int64(x.UserId)
+	enc.Int32(x.GoodsId)
+	enc.Uint32(x.BuyNum)
+}
+
+func (x *BuyGoodsRequest) AkasarUnmarshal(dec *codegen.Deserializer) {
+	if x == nil {
+		panic(fmt.Errorf("BuyGoodsRequest.AkasarUnmarshal: nil receiver"))
+	}
+	x.UserId = dec.Int64()
+	x.GoodsId = dec.Int32()
+	x.BuyNum = dec.Uint32()
+}
 
 var _ codegen.AutoMarshal = (*UserInfo)(nil)
 
@@ -563,4 +609,42 @@ func (x *VipInfo) AkasarUnmarshal(dec *codegen.Deserializer) {
 	}
 	*(*int32)(&x.VipLevel) = dec.Int32()
 	x.ExpireAt = dec.Int64()
+}
+
+// Size implementations.
+
+func serviceAkasarSize_ptr_VipInfo_97ed7ebb(x *VipInfo) int {
+	if x == nil {
+		return 1
+	} else {
+		return 1 + serviceAkasarSize_VipInfo_35d4445b(&*x)
+	}
+}
+func serviceAkasarSize_AutoMarshal_a7dfcf1b(x *akasar.AutoMarshal) int {
+	size := 0
+	return size
+}
+func serviceAkasarSize_BuyGoodsRequest_e481b0d8(x *BuyGoodsRequest) int {
+	size := 0
+	size += 8
+	size += 4
+	size += 4
+	size += serviceAkasarSize_AutoMarshal_a7dfcf1b(&x.AutoMarshal)
+	return size
+}
+func serviceAkasarSize_UserInfo_cf942c01(x *UserInfo) int {
+	size := 0
+	size += serviceAkasarSize_AutoMarshal_a7dfcf1b(&x.AutoMarshal)
+	size += 8
+	size += (4 + len(x.Name))
+	size += 8
+	size += serviceAkasarSize_ptr_VipInfo_97ed7ebb(x.VipInfo)
+	return size
+}
+func serviceAkasarSize_VipInfo_35d4445b(x *VipInfo) int {
+	size := 0
+	size += serviceAkasarSize_AutoMarshal_a7dfcf1b(&x.AutoMarshal)
+	size += 4
+	size += 8
+	return size
 }

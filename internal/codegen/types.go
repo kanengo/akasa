@@ -539,7 +539,7 @@ func (tSet *typeSet) isMeasurable(t types.Type) bool {
 		tSet.measurable.Set(t, tSet.isFixedSizeType(x.Key()) && tSet.isFixedSizeType(x.Elem()))
 	case *types.Struct:
 		measurable := true
-		for i := 0; i < x.NumFields(); i++ {
+		for i := 0; i < x.NumFields() && measurable; i++ {
 			f := x.Field(i)
 			if f.Pkg() != rootPkg {
 				measurable = false
@@ -549,7 +549,9 @@ func (tSet *typeSet) isMeasurable(t types.Type) bool {
 		}
 		tSet.measurable.Set(t, measurable)
 	case *types.Named:
-		if x.Obj().Pkg() != rootPkg {
+		if isAkasarAutoMarshal(x) {
+			tSet.measurable.Set(t, true)
+		} else if x.Obj().Pkg() != rootPkg {
 			tSet.measurable.Set(t, false)
 		} else {
 			tSet.measurable.Set(t, tSet.isMeasurable(x.Underlying()))

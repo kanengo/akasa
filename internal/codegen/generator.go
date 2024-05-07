@@ -773,6 +773,11 @@ func (g *generator) akasa() importPkg {
 	return g.tSet.importPackage(akasarPackagePath, "akasar")
 }
 
+func (g *generator) pool() importPkg {
+	p := fmt.Sprintf("%s/internal/pool", akasarPackagePath)
+	return g.tSet.importPackage(p, "pool")
+}
+
 func (g *generator) componentRef(com *component) string {
 	if com.isRoot {
 		return g.akasa().qualify("Root")
@@ -1464,6 +1469,9 @@ func (g *generator) generateClientStubs(p printFn) {
 				p(`	requestBytes = len(enc.Data())`)
 			}
 			p(`	var results []byte`)
+			p(`	defer func() {`)
+			p(`		%s(results)`, g.pool().qualify("FreePowerOfTwoSizeBytes"))
+			p(`	}()`)
 			p(`	results, err = s.stub.Invoke(ctx, %d, %s, shardKey)`, methodIndex[m.Name()], data)
 			p(`	replyBytes = len(results)`)
 			p(`	if err != nil {`)
@@ -1593,7 +1601,33 @@ func (g *generator) generateSeverStubs(p printFn) {
 			p(``)
 			p(`	//Encode the results.`)
 
-			p(`	enc := %s()`, g.codegen().qualify("NewSerializer"))
+			preAllocated := false
+			if sig.Results().Len() > 1 {
+				canPreAllocate := true
+				for i := 0; i < sig.Results().Len()-1; i++ {
+					if !g.preAllocatable(sig.Results().At(i).Type()) {
+						canPreAllocate = false
+						break
+					}
+				}
+				if canPreAllocate {
+					p(``)
+					p("	// Preallocate a buffer of the right size.")
+					p(`	size := 0`)
+					for i := 0; i < sig.Results().Len()-1; i++ {
+						at := sig.Results().At(i).Type()
+						p(`	size += %s`, g.size(fmt.Sprintf("r%d", i), at))
+					}
+
+					p("	enc := %s", g.codegen().qualify("NewSerializer(size)"))
+					preAllocated = true
+				}
+			}
+
+			if !preAllocated {
+				p(`	enc := %s()`, g.codegen().qualify("NewSerializer"))
+
+			}
 
 			b.Reset()
 			for i := 0; i < sig.Results().Len()-1; i++ {
@@ -1602,8 +1636,8 @@ func (g *generator) generateSeverStubs(p printFn) {
 				p(`	%s`, g.encode("enc", res, rt))
 			}
 			p(`	enc.Error(appErr)`)
+			p(``)
 			p(`	return enc.Data(), nil`)
-
 			p(`}`)
 		}
 	}

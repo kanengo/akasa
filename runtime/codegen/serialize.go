@@ -3,13 +3,17 @@ package codegen
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
-
+	"github.com/kanengo/akasar/internal/pool"
 	"google.golang.org/protobuf/proto"
+	"math"
 
 	"github.com/kanengo/akasar/internal/umath"
 
 	"github.com/kanengo/akasar/internal/unsafex"
+)
+
+const (
+	defaultInitializeSize = 128
 )
 
 type serializerError struct {
@@ -29,53 +33,79 @@ func makeSerializerError(format string, args ...interface{}) serializerError {
 }
 
 type Serializer struct {
-	buf []byte
+	buf *[]byte
 }
 
 func NewSerializer(size ...int) *Serializer {
+	n := 0
 	if len(size) > 0 {
-		n := umath.FindNearestPow2(size[0])
-		enc := &Serializer{buf: make([]byte, 0, n)}
-		return enc
+		n = size[0]
+	} else {
+		n = defaultInitializeSize
 	}
 
-	return &Serializer{buf: make([]byte, 0, 128)}
+	buf, err := pool.GetPowerOfTwoSizeBytes(n)
+	if err != nil {
+		panic(makeSerializerError(err.Error()))
+	}
+
+	return &Serializer{buf: buf}
+}
+
+func (s *Serializer) free() {
+	_ = pool.FreePowerOfTwoSizeBytes(*s.buf)
+	s.buf = nil
 }
 
 func (s *Serializer) grow(bytesNeeded int) {
-	l := len(s.buf)
-	c := cap(s.buf)
+	l := len(*s.buf)
+	c := cap(*s.buf)
 
 	if l+bytesNeeded <= c {
 		return
 	}
 
 	newSize := umath.FindNearestPow2(c + 1)
+	for newSize < l+bytesNeeded {
+		newSize *= 2
+	}
 	//fmt.Printf("new cap size:%d\n", newSize)
-	buf := make([]byte, 0, newSize)
-	buf = append(buf, s.buf...)
+	buf, err := pool.GetPowerOfTwoSizeBytes(newSize)
+	if err != nil {
+		panic(makeSerializerError(err.Error()))
+	}
+
+	//buf := make([]byte, 0, newSize)
+
+	*buf = append(*buf, *s.buf...)
+	*s.buf = (*s.buf)[:0]
+
+	err = pool.FreePowerOfTwoSizeBytes(*s.buf)
+	if err != nil {
+		panic(makeSerializerError(err.Error()))
+	}
 
 	s.buf = buf
 }
 
 func (s *Serializer) Uint64(val uint64) {
 	s.grow(8)
-	s.buf = binary.LittleEndian.AppendUint64(s.buf, val)
+	*s.buf = binary.LittleEndian.AppendUint64(*s.buf, val)
 }
 
 func (s *Serializer) Uint32(val uint32) {
 	s.grow(4)
-	s.buf = binary.LittleEndian.AppendUint32(s.buf, val)
+	*s.buf = binary.LittleEndian.AppendUint32(*s.buf, val)
 }
 
 func (s *Serializer) Uint16(val uint16) {
 	s.grow(2)
-	s.buf = binary.LittleEndian.AppendUint16(s.buf, val)
+	*s.buf = binary.LittleEndian.AppendUint16(*s.buf, val)
 }
 
 func (s *Serializer) Uint8(val uint8) {
 	s.grow(1)
-	s.buf = append(s.buf, val)
+	*s.buf = append(*s.buf, val)
 }
 
 func (s *Serializer) Uint(val uint) {
@@ -104,7 +134,7 @@ func (s *Serializer) Int8(val int8) {
 
 func (s *Serializer) Byte(val byte) {
 	s.grow(1)
-	s.buf = append(s.buf, val)
+	*s.buf = append(*s.buf, val)
 }
 
 func (s *Serializer) String(val string) {
@@ -117,7 +147,7 @@ func (s *Serializer) String(val string) {
 		return
 	}
 	s.grow(n)
-	s.buf = append(s.buf, unsafex.StringToBytes(val)...)
+	*s.buf = append(*s.buf, unsafex.StringToBytes(val)...)
 }
 
 func (s *Serializer) MarshalProto(value proto.Message) {
@@ -142,7 +172,7 @@ func (s *Serializer) Bytes(val []byte) {
 		return
 	}
 	s.grow(n)
-	s.buf = append(s.buf, val...)
+	*s.buf = append(*s.buf, val...)
 }
 
 func (s *Serializer) Bool(b bool) {
@@ -172,7 +202,7 @@ func (s *Serializer) Complex128(val complex128) {
 }
 
 func (s *Serializer) Data() []byte {
-	return s.buf
+	return *s.buf
 }
 
 const (

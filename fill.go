@@ -63,9 +63,7 @@ func fillRefs(impl any, get func(t reflect.Type) (any, error)) error {
 			continue
 		}
 		valueFiled := f.Field(0) //Ref[T].val
-		fmt.Println("===FillRefs before", f.String())
 		component, err := get(valueFiled.Type())
-		fmt.Println("===FillRefs after", f.String())
 		if err != nil {
 			return fmt.Errorf("FillRefs: setting field %v.%s: %w", s.Type(), s.Type().Field(i).Name, err)
 		}

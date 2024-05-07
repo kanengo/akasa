@@ -3,6 +3,8 @@ package multi
 import (
 	"context"
 	"fmt"
+	"github.com/kanengo/akasar/internal/net/call"
+	"github.com/kanengo/akasar/runtime/deployers"
 	"log/slog"
 	"os"
 	"sync"
@@ -250,7 +252,7 @@ func (d *deployer) startColocationGroup(g *group) error {
 			DeploymentId:    d.deploymentId,
 			Id:              gonanoid.Must(16),
 			RunMain:         g.started[runtime.Root],
-			InternalAddress: "localhost:0",
+			InternalAddress: call.Unix(deployers.NewUnixSocketPath(d.tmpDir)).Address(),
 			LogLevel:        d.config.App.LogLevel,
 		}
 

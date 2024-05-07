@@ -97,7 +97,7 @@ func NewEnvelope(ctx context.Context, aletArgs *protos.AkasaletArgs, config *pro
 	myUds := deployers.NewUnixSocketPath(tmpDir)
 
 	aletArgs = protomsg.Clone(aletArgs)
-	aletArgs.ControlSocket = deployers.NewUnixSocketPath(tmpDir)
+	aletArgs.ControlSocket = deployers.NewUnixSocketPath(tmpDir) //akasalet control socket
 	aletArgs.Redirects = []*protos.AkasaletArgs_Redirect{
 		{
 			Component: control.DeployerPath,

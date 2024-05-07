@@ -121,7 +121,12 @@ func NewRemoteAkasaLet(ctx context.Context, regs []*codegen.Registration, bootst
 
 	// Make internal listener, use to rpc
 	// TODO(leeka) support quic
-	lis, err := net.Listen("tcp", args.InternalAddress)
+	netPoint, err := call.ParseNetEndpoint(args.InternalAddress)
+	if err != nil {
+		return nil, err
+
+	}
+	lis, err := net.Listen(netPoint.Net, netPoint.Addr)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +137,7 @@ func NewRemoteAkasaLet(ctx context.Context, regs []*codegen.Registration, bootst
 		}
 	}()
 
-	dialAddr := fmt.Sprintf("tcp://%s", lis.Addr().String())
+	dialAddr := fmt.Sprintf("%s://%s", lis.Addr().Network(), lis.Addr().String())
 
 	servers, ctx := errgroup.WithContext(ctx)
 

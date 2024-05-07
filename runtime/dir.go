@@ -8,7 +8,7 @@ import (
 func DataDir() (string, error) {
 	dataDir := os.Getenv("XDG_DATA_HOME")
 	if dataDir == "" {
-		// 默认在 ~/.single/share
+		// 默认在 ~/.local/share
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err

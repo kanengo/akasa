@@ -199,6 +199,8 @@ func NewRemoteAkasaLet(ctx context.Context, regs []*codegen.Registration, bootst
 		}
 	}
 
+	call.InitUnifiedClientConnectionManager(a.ctx, a.sysLogger)
+
 	a.deployer, err = a.getDeployerControl()
 	if err != nil {
 		return nil, err

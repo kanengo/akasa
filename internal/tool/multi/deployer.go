@@ -133,6 +133,8 @@ func newDeployer(ctx context.Context, deploymentId string, config *MultiConfig, 
 		return nil, err
 	}
 
+	call.InitUnifiedClientConnectionManager(ctx, logger)
+
 	// Start a goroutine that watches for context cancelation.
 	d.running.Go(func() error {
 		<-d.ctx.Done()

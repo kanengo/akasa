@@ -7,10 +7,11 @@ LogLevel = "debug"
 colocate = [
     [
         "github.com/kanengo/akasar/examples/multiprocess/components/User",
-        "github.com/kanengo/akasar/examples/multiprocess/components/VIP",
+        "github.com/kanengo/akasar/examples/multiprocess/components/Store",
     ],
     [
-        "github.com/kanengo/akasar/examples/multiprocess/components/Store",
+        "github.com/kanengo/akasar/examples/multiprocess/components/VIP",
+
     ]
 ]
 

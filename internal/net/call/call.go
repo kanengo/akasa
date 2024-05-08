@@ -35,6 +35,20 @@ type Connection interface {
 	Close()
 }
 
+var defaultUnifiedClientConnectionMgr *unifiedClientConnectionManager
+
+var ucmOnce sync.Once
+
+func InitUnifiedClientConnectionManager(ctx context.Context, logger *slog.Logger) {
+	ucmOnce.Do(func() {
+		defaultUnifiedClientConnectionMgr = &unifiedClientConnectionManager{
+			clientConns: make(map[string]*clientConnection),
+			ctx:         ctx,
+			logger:      logger,
+		}
+	})
+}
+
 type Listener interface {
 	Accept() (net.Conn, *HandlerMap, error)
 	Close() error
@@ -47,12 +61,14 @@ type reconnectionConnection struct {
 	opts ClientOptions
 
 	mu     sync.Mutex
-	conns  map[string]*clientConnection
+	conns  map[string]reconnectionSubConnection
 	closed bool
 
 	resolver       Resolver
 	cancelResolver func()
 	resolverDone   sync.WaitGroup
+
+	ucm *unifiedClientConnectionManager
 }
 
 func (rc *reconnectionConnection) Call(ctx context.Context, key MethodKey, bytes []byte, opts CallOptions) ([]byte, error) {
@@ -103,7 +119,7 @@ func (rc *reconnectionConnection) callOnce(ctx context.Context, key MethodKey, a
 		// 关闭连接(通过重连进行尝试恢复)， 结束所有正在进行中的请求
 		conn.shutdown("client send request", err)
 		// 结束请求
-		conn.endCall(rpc)
+		conn.endCall(rpc.id)
 		return nil, fmt.Errorf("%w: %s", CommunicationError, err)
 	}
 
@@ -121,7 +137,7 @@ func (rc *reconnectionConnection) callOnce(ctx context.Context, key MethodKey, a
 		case <-rpc.doneSignal:
 		case <-cDone:
 			// Canceled or deadline expired.
-			conn.endCall(rpc)
+			conn.endCall(rpc.id)
 			if !haveDeadline || time.Now().Before(deadline) {
 				//未超时就已经被取消,通知服务器
 				if err := writeMessage(nc, &conn.wLock, cancelMessage, rpc.id, nil, nil, rc.opts.WriteFlattenLimit); err != nil {
@@ -169,27 +185,21 @@ func (rc *reconnectionConnection) updateEndpoints(ctx context.Context, endpoints
 		keep[addr] = struct{}{}
 		if _, ok := rc.conns[addr]; !ok {
 			// New endpoint, create connection and manage it.
-			ctx, cancel := context.WithCancel(ctx)
-			c := &clientConnection{
-				rc:       rc,
-				cancel:   cancel,
-				logger:   rc.opts.Logger,
-				endpoint: ep,
-				calls:    map[uint64]*call{},
-				lastID:   0,
+			sc := reconnectionSubConnection{
+				rc:  rc,
+				ucm: rc.ucm,
+				c:   rc.ucm.register(ep, rc),
 			}
-			rc.conns[addr] = c
-			c.register()
-			go c.manage(ctx)
+			rc.conns[addr] = sc
 		}
 	}
 
-	for addr, c := range rc.conns {
+	for addr, sc := range rc.conns {
 		if _, ok := keep[addr]; ok {
-			// 仍然存货，继续保持
+			// 仍然存在，继续保持
 			continue
 		}
-		c.unregister()
+		sc.unregister()
 	}
 
 	return nil
@@ -279,9 +289,25 @@ func (s connState) String() string {
 	return connStateNames[s]
 }
 
-// clientConnection 管理一个网络连接
+type reconnectionSubConnection struct {
+	rc  *reconnectionConnection
+	ucm *unifiedClientConnectionManager
+	c   *clientConnection
+}
+
+func (sc *reconnectionSubConnection) unregister() {
+	sc.c.unregisterReConnection(sc.rc)
+}
+
+func (sc *reconnectionSubConnection) close() {
+	sc.c.closeReconnection(sc.rc)
+}
+
+// clientConnection 管理一个真实的网络连接
 type clientConnection struct {
-	rc     *reconnectionConnection
+	//rc     *reconnectionConnection
+	rcs    map[*reconnectionConnection]map[uint64]struct{}
+	mu     sync.RWMutex
 	cancel func()
 
 	logger   *slog.Logger
@@ -297,6 +323,7 @@ type clientConnection struct {
 	version        version
 	calls          map[uint64]*call // 正在进行中的call
 	lastID         uint64
+	ucm            *unifiedClientConnectionManager
 }
 
 func (c *clientConnection) Address() string {
@@ -322,6 +349,40 @@ func (c *clientConnection) unregister() {
 	default:
 
 	}
+}
+
+func (c *clientConnection) unregisterReConnection(rc *reconnectionConnection) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.rcs[rc]
+	if !ok {
+		return
+	}
+
+	c.rcs[rc] = nil
+	delete(c.rcs, rc)
+
+	if len(c.rcs) == 0 {
+		c.unregister()
+	}
+
+	return
+}
+
+func (c *clientConnection) closeReconnection(rc *reconnectionConnection) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	callings, ok := c.rcs[rc]
+	if !ok {
+		return
+	}
+
+	c.rcs[rc] = nil
+	delete(c.rcs, rc)
+
+	c.endCallByIds(callings, fmt.Errorf("%w: connection closed", CommunicationError))
+
+	return
 }
 
 // manage 处理一个存活的连接直到missing
@@ -357,7 +418,11 @@ func (c *clientConnection) setState(s connState) {
 
 	// 连接丢失, 删除连接
 	if s == missing {
-		delete(c.rc.conns, c.endpoint.Address())
+		addr := c.endpoint.Address()
+		for rs := range c.rcs {
+			delete(rs.conns, addr)
+		}
+		delete(c.ucm.clientConns, addr)
 		if c.cancel != nil {
 			c.cancel()
 			c.cancel = nil
@@ -374,12 +439,16 @@ func (c *clientConnection) setState(s connState) {
 
 	if s == idle || s == active {
 		if !c.inBalancer {
-			c.rc.opts.Balancer.Add(c)
+			for rc := range c.rcs {
+				rc.opts.Balancer.Add(c)
+			}
 			c.inBalancer = true
 		}
 	} else {
 		if c.inBalancer {
-			c.rc.opts.Balancer.Remove(c)
+			for rc := range c.rcs {
+				rc.opts.Balancer.Remove(c)
+			}
 			c.inBalancer = false
 		}
 	}
@@ -403,6 +472,19 @@ func (c *clientConnection) endCalls(err error) {
 	}
 }
 
+func (c *clientConnection) endCallByIds(ids map[uint64]struct{}, err error) {
+	for id := range ids {
+		calling := c.calls[id]
+		if calling == nil {
+			continue
+		}
+		calling.err = err
+		atomic.StoreUint32(&calling.done, 1)
+		close(calling.doneSignal)
+		delete(c.calls, id)
+	}
+}
+
 func (c *clientConnection) close() {
 	c.endCalls(fmt.Errorf("communication error: connection closed"))
 	c.setState(missing)
@@ -413,7 +495,7 @@ func (c *clientConnection) checkInvariants() {
 	s := c.state
 
 	// 连接的存在与否 与 missing 状态不符
-	if _, ok := c.rc.conns[c.endpoint.Address()]; ok != (s != missing) {
+	if _, ok := c.ucm.clientConns[c.endpoint.Address()]; ok != (s != missing) {
 		panic(fmt.Sprintf("%v connection: wrong connection table presence %v", s, ok))
 	}
 
@@ -445,8 +527,8 @@ func (c *clientConnection) connectOnce(ctx context.Context) bool {
 		_ = nc.Close()
 	}()
 
-	c.rc.mu.Lock()
-	defer c.rc.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	c.c = nc
 	c.cBuf = bufio.NewReader(nc)
@@ -511,8 +593,8 @@ func (c *clientConnection) exchangeVersions() error {
 	nc, buf := c.c, c.cBuf
 
 	// 读取网络数据时不持有锁
-	c.rc.mu.Unlock()
-	defer c.rc.mu.Lock()
+	c.mu.Unlock()
+	defer c.mu.Lock()
 
 	if err := writeVersion(nc, &c.wLock); err != nil {
 		return err
@@ -542,8 +624,8 @@ func (c *clientConnection) readAndProcessMessage() error {
 	buf := c.cBuf
 
 	// 网络操作期间不持有锁
-	c.rc.mu.Unlock()
-	defer c.rc.mu.Lock()
+	c.mu.Unlock()
+	defer c.mu.Lock()
 
 	mt, id, msg, err := readMessage(buf)
 	if err != nil {
@@ -588,8 +670,8 @@ func (c *clientConnection) readAndProcessMessage() error {
 
 // findAndEndCall 找到正在进行的调用并结束
 func (c *clientConnection) findAndEndCall(id uint64) *call {
-	c.rc.mu.Lock()
-	defer c.rc.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	calling := c.calls[id]
 	if calling != nil {
@@ -622,15 +704,15 @@ func (c *clientConnection) fail(details string, err error) {
 
 // shutdown 当在操作连接中发现错误时，关闭网络连接和取消所有进行中的请求
 func (c *clientConnection) shutdown(details string, err error) {
-	c.rc.mu.Lock()
-	defer c.rc.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.fail(details, err)
 }
 
-func (c *clientConnection) endCall(rpc *call) {
-	c.rc.mu.Lock()
-	defer c.rc.mu.Unlock()
-	delete(c.calls, rpc.id)
+func (c *clientConnection) endCall(id uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.calls, id)
 	if len(c.calls) == 0 {
 		c.lastDone()
 	}
@@ -646,12 +728,88 @@ type call struct {
 	done uint32
 }
 
+type unifiedClientConnectionManager struct {
+	clientConns map[string]*clientConnection
+	mu          sync.RWMutex
+	ctx         context.Context
+	logger      *slog.Logger
+	closed      bool
+}
+
+func (m *unifiedClientConnectionManager) close() {
+	func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.closed {
+			return
+		}
+		m.closed = true
+		for _, c := range m.clientConns {
+			c.close()
+		}
+	}()
+}
+
+func (m *unifiedClientConnectionManager) register(ep Endpoint, rc *reconnectionConnection) *clientConnection {
+	addr := ep.Address()
+	m.mu.RLock()
+	c, ok := m.clientConns[addr]
+	m.mu.RUnlock()
+
+	registerFunc := func(c *clientConnection) {
+		m.logger.Debug("register exists endpoint", "addr", ep.Address())
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		if _, ok := c.rcs[rc]; ok {
+			return
+		}
+		c.rcs[rc] = make(map[uint64]struct{})
+
+		if c.state == idle || c.state == active {
+			rc.opts.Balancer.Add(c)
+		}
+	}
+
+	if ok {
+		registerFunc(c)
+		return c
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if c, ok := m.clientConns[addr]; ok {
+		registerFunc(c)
+		return c
+	}
+
+	ctx, cancel := context.WithCancel(m.ctx)
+	c = &clientConnection{
+		rcs: map[*reconnectionConnection]map[uint64]struct{}{
+			rc: make(map[uint64]struct{}),
+		},
+		cancel:   cancel,
+		logger:   m.logger,
+		endpoint: ep,
+		calls:    map[uint64]*call{},
+		lastID:   0,
+		ucm:      m,
+	}
+	m.clientConns[ep.Address()] = c
+	c.register()
+	go c.manage(ctx)
+
+	return c
+}
+
 func Connect(ctx context.Context, resolver Resolver, opts ClientOptions) (Connection, error) {
 	conn := reconnectionConnection{
 		opts:           opts.withDefaults(),
-		conns:          make(map[string]*clientConnection),
+		conns:          make(map[string]reconnectionSubConnection),
 		resolver:       resolver,
 		cancelResolver: func() {},
+		ucm:            defaultUnifiedClientConnectionMgr,
 	}
 
 	endpoints, version, err := resolver.Resolve(ctx, nil)
@@ -661,7 +819,7 @@ func Connect(ctx context.Context, resolver Resolver, opts ClientOptions) (Connec
 
 	// resolver 不可变且没有任何endpoint
 	if resolver.IsConstant() && len(endpoints) == 0 {
-		return nil, fmt.Errorf("%s: no endpoints available", "unreachable")
+		return nil, fmt.Errorf("%w: no endpoints available", Unreachable)
 	}
 
 	// resolver 可变但 version为nil

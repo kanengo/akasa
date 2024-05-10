@@ -8,3 +8,4 @@ listeners.reverser = {address = "localhost:9000"}
 ["github.com/kanengo/akasar/examples/reverser/Reverser"]
 DB  = "localhost:3360"
 Redis = "localhost:6379"
+Ecs = {AppId = "123456",AppSecret = "123456789"}

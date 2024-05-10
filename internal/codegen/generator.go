@@ -679,7 +679,7 @@ func findComponents(pkg *packages.Package, f *ast.File, tSet *typeSet) ([]*compo
 type printFn func(format string, args ...any)
 
 func (g *generator) generate() error {
-	if len(g.components) == 0 {
+	if len(g.components)+g.tSet.autoMarshalCandidates.Len() == 0 {
 		return nil
 	}
 
@@ -774,7 +774,7 @@ func (g *generator) akasa() importPkg {
 }
 
 func (g *generator) pool() importPkg {
-	p := fmt.Sprintf("%s/internal/pool", akasarPackagePath)
+	p := fmt.Sprintf("%s/runtime/pool", akasarPackagePath)
 	return g.tSet.importPackage(p, "pool")
 }
 

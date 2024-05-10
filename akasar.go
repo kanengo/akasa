@@ -145,6 +145,18 @@ func (r *Result[T]) Unwrap() T {
 	return r.val
 }
 
+func ResultError[T any](errs ...error) Result[T] {
+	var zero T
+	return NewResult(zero, errs...)
+}
+
+var placeholder struct{}
+
+func ResultUnwrap(errs ...error) {
+	r := ResultError[placeholder](errs...)
+	r.Unwrap()
+}
+
 func NewResult[T any](value T, errs ...error) Result[T] {
 	var err error
 	if len(errs) == 1 {
@@ -239,10 +251,3 @@ func (*AutoMarshal) AkasarMarshal(enc *codegen.Serializer)     {}
 func (*AutoMarshal) AkasarUnmarshal(enc *codegen.Deserializer) {}
 
 //=======================================
-
-type Singleton[T any] struct {
-}
-
-func GetSingleton[T any]() {
-
-}

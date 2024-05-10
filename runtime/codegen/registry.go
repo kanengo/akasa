@@ -106,6 +106,7 @@ func ComponentConfigValidator(path, cfg string) error {
 	}
 
 	appConfig := &protos.AppConfig{Sections: map[string]string{path: cfg}}
+	//shortKey := logging.ShortenComponent(path)
 	if err := runtime.ParseConfigSection(path, "", appConfig.Sections, componentConfig); err != nil {
 		return fmt.Errorf("%v: bad config %w", reg.Iface, err)
 	}

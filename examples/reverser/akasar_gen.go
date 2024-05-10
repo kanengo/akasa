@@ -8,6 +8,7 @@ import (
 	"errors"
 	"github.com/kanengo/akasar"
 	"github.com/kanengo/akasar/runtime/codegen"
+	"github.com/kanengo/akasar/runtime/pool"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"reflect"
@@ -143,10 +144,12 @@ func (s reverserClientStub) Reverse(ctx context.Context, a0 string) (r0 string, 
 	var shardKey uint64
 
 	// Call the remote method.
-	data := enc.Data()
-	requestBytes = len(data)
+	requestBytes = len(enc.Data())
 	var results []byte
-	results, err = s.stub.Invoke(ctx, 0, nil, shardKey)
+	defer func() {
+		pool.FreePowerOfTwoSizeBytes(results)
+	}()
+	results, err = s.stub.Invoke(ctx, 0, enc.Data(), shardKey)
 	replyBytes = len(results)
 	if err != nil {
 		err = errors.Join(akasar.RemoteCallError, err)
@@ -203,9 +206,14 @@ func (s *reverserServerStub) reverse(ctx context.Context, args []byte) (res []by
 	r0, appErr := s.impl.Reverse(ctx, a0)
 
 	//Encode the results.
-	enc := codegen.NewSerializer()
+
+	// Preallocate a buffer of the right size.
+	size := 0
+	size += (4 + len(r0))
+	enc := codegen.NewSerializer(size)
 	enc.String(r0)
 	enc.Error(appErr)
+
 	return enc.Data(), nil
 }
 

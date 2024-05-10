@@ -16,9 +16,18 @@ type reverser struct {
 	akasar.WithConfig[config]
 }
 
+type ecs struct {
+	AppId     string
+	AppSecret string
+}
+
 type config struct {
 	DB    string
 	Redis string
+	Ecs   struct {
+		AppId     string
+		AppSecret string
+	}
 }
 
 func (r reverser) Init(ctx context.Context) error {

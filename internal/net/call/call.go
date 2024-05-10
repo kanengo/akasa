@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/kanengo/akasar/internal/pool"
+	"github.com/kanengo/akasar/runtime/pool"
 	"io"
 	"log/slog"
 	"net"

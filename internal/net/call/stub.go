@@ -2,8 +2,8 @@ package call
 
 import (
 	"context"
-	"github.com/kanengo/akasar/internal/pool"
 	"github.com/kanengo/akasar/runtime/codegen"
+	"github.com/kanengo/akasar/runtime/pool"
 )
 
 type stub struct {

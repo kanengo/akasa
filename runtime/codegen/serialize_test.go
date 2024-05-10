@@ -2,7 +2,7 @@ package codegen
 
 import (
 	"fmt"
-	"github.com/kanengo/akasar/internal/pool"
+	"github.com/kanengo/akasar/runtime/pool"
 	"testing"
 )
 

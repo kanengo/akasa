@@ -138,7 +138,7 @@ type Result[T any] struct {
 	err error
 }
 
-func (r *Result[T]) Unwrap() T {
+func (r Result[T]) Unwrap() T {
 	if r.err != nil {
 		panic(codegen.WrapResultError(r.err))
 	}
@@ -150,11 +150,15 @@ func ResultError[T any](errs ...error) Result[T] {
 	return NewResult(zero, errs...)
 }
 
-var placeholder struct{}
+type placeholder struct{}
 
-func ResultUnwrap(errs ...error) {
+type Placeholder = placeholder
+
+type ErrorResult = Result[placeholder]
+
+func WithErrorResult(errs ...error) ErrorResult {
 	r := ResultError[placeholder](errs...)
-	r.Unwrap()
+	return r
 }
 
 func NewResult[T any](value T, errs ...error) Result[T] {
@@ -170,11 +174,11 @@ func NewResult[T any](value T, errs ...error) Result[T] {
 	}
 }
 
-func (r *Result[T]) Error() error {
+func (r Result[T]) Error() error {
 	return r.err
 }
 
-func (r *Result[T]) Value() T {
+func (r Result[T]) Value() T {
 	return r.val
 }
 
@@ -191,11 +195,18 @@ type Components[T any] struct {
 func (c *Components[T]) Logger(ctx context.Context) *slog.Logger {
 	logger := c.logger
 	sc := trace.SpanContextFromContext(ctx)
+
+	attrs := make([]any, 0, 2)
+
 	if sc.HasTraceID() {
-		logger = logger.With(slog.String("traceId", sc.TraceID().String()))
+		attrs = append(attrs, slog.String("traceId", sc.TraceID().String()))
 	}
 	if sc.HasSpanID() {
-		logger = logger.With(slog.String("spanId", sc.TraceID().String()))
+		attrs = append(attrs, slog.String("spanId", sc.SpanID().String()))
+	}
+
+	if len(attrs) > 0 {
+		logger = logger.With(attrs...)
 	}
 
 	return logger

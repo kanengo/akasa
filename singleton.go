@@ -1,7 +1,6 @@
 package akasar
 
 import (
-	"reflect"
 	"sync"
 
 	"github.com/kanengo/akasar/internal/reflection"
@@ -12,7 +11,8 @@ type Singleton[T any] struct {
 }
 
 var singletonMu sync.Mutex
-var singletons = map[reflect.Type]map[string]*register.WriteOnce[any]{}
+
+var singletons = sync.Map{}
 
 func getSingleton[T any](key string) *register.WriteOnce[any] {
 	rt := reflection.Type[T]()
@@ -20,19 +20,19 @@ func getSingleton[T any](key string) *register.WriteOnce[any] {
 	singletonMu.Lock()
 	defer singletonMu.Unlock()
 
-	m, ok := singletons[rt]
+	mObj, ok := singletons.Load(rt)
 	if !ok {
-		m = map[string]*register.WriteOnce[any]{}
-		singletons[rt] = m
+		mObj, _ = singletons.LoadOrStore(rt, &sync.Map{})
 	}
 
-	s, ok := m[key]
+	m, _ := mObj.(*sync.Map)
+
+	s, ok := m.Load(key)
 	if !ok {
-		s = &register.WriteOnce[any]{}
-		m[key] = s
+		s, _ = m.LoadOrStore(key, &register.WriteOnce[any]{})
 	}
 
-	return s
+	return s.(*register.WriteOnce[any])
 }
 
 func SetSingleton[T any](key string, val T) {

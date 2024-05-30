@@ -40,6 +40,9 @@ func SetSingleton[T any](key string, val T) {
 	s.Write(val)
 }
 
+// GetSingleton
+// warning: 进行单列初始化的地方必须不能在读取单列的地方后后面执行，不然会死锁，
+// 因为未初始化的单列读取时会阻塞
 func GetSingleton[T any](key string) T {
 	s := getSingleton[T](key)
 	val := s.Read()

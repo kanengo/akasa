@@ -261,4 +261,9 @@ type AutoMarshal struct {
 func (*AutoMarshal) AkasarMarshal(enc *codegen.Serializer)     {}
 func (*AutoMarshal) AkasarUnmarshal(enc *codegen.Deserializer) {}
 
+// CatchResultPanicError 捕获 Result[T].Unwrap() 产生恶的panic，获取其error
+func CatchResultPanicError(r any) error {
+	return codegen.CatchPanicResultError(r)
+}
+
 //=======================================

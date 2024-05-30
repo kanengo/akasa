@@ -386,7 +386,7 @@ func getListenerNamesFromStructFiled(pkg *packages.Package, f *ast.Field) ([]str
 		}
 	}
 
-	// GEt the listener name(s) from the struct filed name(s).
+	// Get the listener name(s) from the struct filed name(s).
 	if f.Names == nil {
 		return []string{"Listener"}, nil
 	}

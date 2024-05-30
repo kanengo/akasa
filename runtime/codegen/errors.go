@@ -37,6 +37,20 @@ func (e resultUnwrapError) Unwrap() error {
 	return e.err
 }
 
+func CatchPanicResultError(r any) error {
+	err, ok := r.(error)
+	if !ok {
+		return nil
+	}
+
+	var uErr resultUnwrapError
+	if errors.As(err, &uErr) {
+		return uErr.Unwrap()
+	}
+
+	return nil
+}
+
 func CatchResultUnwrapPanic(r any) error {
 	if r == nil {
 		return nil
